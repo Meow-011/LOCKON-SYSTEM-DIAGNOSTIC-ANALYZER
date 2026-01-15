@@ -1,4 +1,4 @@
-# 🛡️ LOCKON: SYSTEM DIAGNOSTIC ANALYZER
+#  LOCKON: SYSTEM DIAGNOSTIC ANALYZER
 
 **LOCKON** is an automated PowerShell security auditing and forensics tool designed for Windows environments. It performs deep system inspections to detect misconfigurations, potential threats, and suspicious activities using a baseline-comparison approach.
 
@@ -9,17 +9,17 @@
 
 ## 🚀 Key Features
 
-*   **🔍 Holistic Security Audit:** Scans 20+ system components including Firewall, UAC, Ports, and Patches.
-*   **🦠 Threat Hunting:** Integrated File Hash analysis (SHA256) against a local Threat DB and Digital Signature verification for Auto-Start items.
-*   **📉 Drift Detection:** Automatically compares the current scan against a previous baseline to flag new open ports, new admins, or changed system files.
-*   **🕵️ Forensics:**
+*   ** Holistic Security Audit:** Scans 20+ system components including Firewall, UAC, Ports, and Patches.
+*   ** Threat Hunting:** Integrated File Hash analysis (SHA256) against a local Threat DB and Digital Signature verification for Auto-Start items.
+*   ** Drift Detection:** Automatically compares the current scan against a previous baseline to flag new open ports, new admins, or changed system files.
+*   ** Forensics:**
     *   **Network:** Hosts file analysis & DNS Cache dump.
     *   **Logs:** Scans Security Event Logs (Last 24h) for Brute Force (4625), Log Clearing (1102), and New Users (4720).
-*   **📊 Interactive Dashboard:** Generates a rich HTML report with sorting, filtering, and CSV export capabilities.
+*   ** Interactive Dashboard:** Generates a rich HTML report with sorting, filtering, and CSV export capabilities.
 
 ---
 
-## 🛠️ Installation & Usage
+##  Installation & Usage
 
 1.  **Clone the Repository:**
     ```bash
@@ -56,7 +56,7 @@ LOCKON is highly customizable. You can adjust the security policy in `config.psd
 
 ---
 
-## ✅ Detailed Audit Checklist
+##  Detailed Audit Checklist
 
 <details>
 <summary><strong>Click to view all 21 Security Checks</strong></summary>
@@ -88,7 +88,7 @@ LOCKON is highly customizable. You can adjust the security policy in `config.psd
 
 ---
 
-## 🔧 Troubleshooting
+##  Troubleshooting
 
 **Q: "Script is not signed" or "Execution of scripts is disabled on this system."**
 **A:** This is a Windows security feature. Run this command in PowerShell (Admin) to allow the script to run:
@@ -122,4 +122,4 @@ This tool is provided "as is" for educational and defensive assessment purposes.
 
 ---
 
-*Verified by LOCKON Defense System* 🛡️
+*Verified by LOCKON Defense System* 
