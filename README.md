@@ -1,12 +1,5 @@
 #  LOCKON: SYSTEM DIAGNOSTIC ANALYZER
 
-<<<<<<< HEAD
-![PowerShell](https://img.shields.io/badge/PowerShell-5.1%2B-blue?logo=powershell)
-![License](https://img.shields.io/badge/License-MIT-green)
-![Status](https://img.shields.io/badge/Status-Active-success)
-
-=======
->>>>>>> f40fd7f7da3deff9c510dcc4dbdde16c16b4f9be
 **LOCKON: SYSTEM DIAGNOSTIC ANALYZER** is an automated PowerShell security auditing and forensics tool designed for Windows environments. It performs deep system inspections to detect misconfigurations, potential threats, and suspicious activities using a baseline-comparison approach.
 
 ![Dashboard Preview](images/dashboard_preview.png)
@@ -15,7 +8,6 @@
 
 ##  Key Features
 
-<<<<<<< HEAD
 *   **Holistic Security Audit:** Scans 20+ system components including Firewall, UAC, Ports, and Patches.
 *   **Threat Hunting:** Integrated File Hash analysis (SHA256) against a local Threat DB and Digital Signature verification for Auto-Start items.
 *   **Drift Detection:** Automatically compares the current scan against a previous baseline to flag new open ports, new admins, or changed system files.
@@ -27,19 +19,6 @@
 ---
 
 ## Installation & Usage
-=======
-*   ** Holistic Security Audit:** Scans 20+ system components including Firewall, UAC, Ports, and Patches.
-*   ** Threat Hunting:** Integrated File Hash analysis (SHA256) against a local Threat DB and Digital Signature verification for Auto-Start items.
-*   ** Drift Detection:** Automatically compares the current scan against a previous baseline to flag new open ports, new admins, or changed system files.
-*   ** Forensics:**
-    *   **Network:** Hosts file analysis & DNS Cache dump.
-    *   **Logs:** Scans Security Event Logs (Last 24h) for Brute Force (4625), Log Clearing (1102), and New Users (4720).
-*   ** Interactive Dashboard:** Generates a rich HTML report with sorting, filtering, and CSV export capabilities.
-
----
-
-##  Installation & Usage
->>>>>>> f40fd7f7da3deff9c510dcc4dbdde16c16b4f9be
 
 1.  **Clone the Repository:**
     ```bash
@@ -65,11 +44,7 @@
 
 ---
 
-<<<<<<< HEAD
 ## Configuration Guide (`config.psd1`)
-=======
-##  Configuration Guide (`config.psd1`)
->>>>>>> f40fd7f7da3deff9c510dcc4dbdde16c16b4f9be
 
 LOCKON is highly customizable. You can adjust the security policy in `config.psd1`:
 
@@ -82,11 +57,7 @@ LOCKON is highly customizable. You can adjust the security policy in `config.psd
 
 ---
 
-<<<<<<< HEAD
 ## Detailed Audit Checklist
-=======
-##  Detailed Audit Checklist
->>>>>>> f40fd7f7da3deff9c510dcc4dbdde16c16b4f9be
 
 <details>
 <summary><strong>Click to view all 21 Security Checks</strong></summary>
@@ -144,16 +115,4 @@ Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
 
 ---
 
-<<<<<<< HEAD
-##  License
-
-This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
-
-> Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files...
-
----
-
 *Verified by LOCKON Defense System*
-=======
-*Verified by LOCKON Defense System* 
->>>>>>> f40fd7f7da3deff9c510dcc4dbdde16c16b4f9be
