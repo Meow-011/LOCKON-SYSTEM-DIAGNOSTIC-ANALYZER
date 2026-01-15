@@ -6,7 +6,7 @@
 
 ---
 
-## 🚀 Key Features
+##  Key Features
 
 *   ** Holistic Security Audit:** Scans 20+ system components including Firewall, UAC, Ports, and Patches.
 *   ** Threat Hunting:** Integrated File Hash analysis (SHA256) against a local Threat DB and Digital Signature verification for Auto-Start items.
@@ -42,7 +42,7 @@
 
 ---
 
-## ⚙️ Configuration Guide (`config.psd1`)
+##  Configuration Guide (`config.psd1`)
 
 LOCKON is highly customizable. You can adjust the security policy in `config.psd1`:
 
