@@ -1,0 +1,26 @@
+# User files to ignore
+*Generate-Dashboardxxx.ps1
+*Script ทำมือ.txt
+*.zip
+*.log
+Debug.log
+
+# Output directories
+AuditReports/
+Reports/
+
+# PowerShell
+*.ps1.xml
+*.ps2
+*.ps2.xml
+*.psc1
+*.psd1.xml
+*.psm1.xml
+*.pssc
+*.pssession
+*.fmt
+*.pdb
+
+# Editor
+.vscode/
+.idea/
