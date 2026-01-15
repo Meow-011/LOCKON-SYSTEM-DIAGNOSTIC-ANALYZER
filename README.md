@@ -1,25 +1,29 @@
 # 🛡️ LOCKON: SYSTEM DIAGNOSTIC ANALYZER
 
-**LOCKON** is an automated PowerShell security auditing and forensics tool designed for Windows environments. It performs deep system inspections to detect misconfigurations, potential threats, and suspicious activities using a baseline-comparison approach.
+![PowerShell](https://img.shields.io/badge/PowerShell-5.1%2B-blue?logo=powershell)
+![License](https://img.shields.io/badge/License-MIT-green)
+![Status](https://img.shields.io/badge/Status-Active-success)
+
+**LOCKON: SYSTEM DIAGNOSTIC ANALYZER** is an automated PowerShell security auditing and forensics tool designed for Windows environments. It performs deep system inspections to detect misconfigurations, potential threats, and suspicious activities using a baseline-comparison approach.
 
 ![Dashboard Preview](images/dashboard_preview.png)
 *(Run 'Option 3' to generate and screenshot your own dashboard)*
 
 ---
 
-## 🚀 Key Features
+##  Key Features
 
-*   **🔍 Holistic Security Audit:** Scans 20+ system components including Firewall, UAC, Ports, and Patches.
-*   **🦠 Threat Hunting:** Integrated File Hash analysis (SHA256) against a local Threat DB and Digital Signature verification for Auto-Start items.
-*   **📉 Drift Detection:** Automatically compares the current scan against a previous baseline to flag new open ports, new admins, or changed system files.
-*   **🕵️ Forensics:**
+*   **Holistic Security Audit:** Scans 20+ system components including Firewall, UAC, Ports, and Patches.
+*   **Threat Hunting:** Integrated File Hash analysis (SHA256) against a local Threat DB and Digital Signature verification for Auto-Start items.
+*   **Drift Detection:** Automatically compares the current scan against a previous baseline to flag new open ports, new admins, or changed system files.
+*   **Forensics:**
     *   **Network:** Hosts file analysis & DNS Cache dump.
     *   **Logs:** Scans Security Event Logs (Last 24h) for Brute Force (4625), Log Clearing (1102), and New Users (4720).
-*   **📊 Interactive Dashboard:** Generates a rich HTML report with sorting, filtering, and CSV export capabilities.
+*   **Interactive Dashboard:** Generates a rich HTML report with sorting, filtering, and CSV export capabilities.
 
 ---
 
-## 🛠️ Installation & Usage
+## Installation & Usage
 
 1.  **Clone the Repository:**
     ```bash
@@ -36,14 +40,16 @@
         ```
 
 3.  **Main Menu:**
-    *   `[1] RUN SECURITY ASSESSMENT`: Start the full system scan.
-    *   `[2] EDIT CONFIGURATION`: Open the policy file.
-    *   `[3] VIEW DASHBOARD`: View previous reports.
-    *   `[4] EXPORT INVENTORY`: Dump installed software list (`export_inventory.ps1`).
+    *   `[1] SYSTEM SECURITY SCAN`: Start the full system scan & view HTML Report.
+    *   `[2] VIEW AUDIT REPORTS`: Launch the interactive Dashboard (All Machines).
+    *   `[3] CONFIGURATION MANAGER`: Edit policies, blacklists, and KBs.
+    *   `[4] EXPORT INVENTORY`: Dump installed software list to CSV.
+    *   `[5] EXPORT ACTIVITY TIMELINE`: Forensic dump of recent user activity (Recent Files).
+    *   `[6] EXIT`
 
 ---
 
-## ⚙️ Configuration Guide (`config.psd1`)
+## Configuration Guide (`config.psd1`)
 
 LOCKON is highly customizable. You can adjust the security policy in `config.psd1`:
 
@@ -56,7 +62,7 @@ LOCKON is highly customizable. You can adjust the security policy in `config.psd
 
 ---
 
-## ✅ Detailed Audit Checklist
+## Detailed Audit Checklist
 
 <details>
 <summary><strong>Click to view all 21 Security Checks</strong></summary>
@@ -88,7 +94,7 @@ LOCKON is highly customizable. You can adjust the security policy in `config.psd
 
 ---
 
-## 🔧 Troubleshooting
+##  Troubleshooting
 
 **Q: "Script is not signed" or "Execution of scripts is disabled on this system."**
 **A:** This is a Windows security feature. Run this command in PowerShell (Admin) to allow the script to run:
@@ -102,24 +108,24 @@ Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
 
 ---
 
-## 📂 Project Structure
+##  Version History
 
-```plaintext
-LOCKON/
-├── LOCKON_Menu.ps1          # Main Entry Point & UI
-├── check_security.ps1       # Core Security Engine
-├── Generate-Dashboard.ps1   # HTML Dashboard Generator
-├── LOCKON_Lib.ps1           # Shared Library (Logging, Config)
-├── threat_db.txt            # Offline Malware Hash Database
-├── config.psd1              # Security Policy & Configuration
-├── AuditReports/            # Output Directory for scan results
-└── README.md                # Documentation
-```
-
-## ⚠️ Disclaimer
-
-This tool is provided "as is" for educational and defensive assessment purposes. The authors take no responsibility for misuse. Always obtain permission before scanning a network.
+*   **v7.0:** Added Offline Threat DB & Process Hash Analysis.
+*   **v6.4:** Refined HTML Report template and corrected table alignment.
+*   **v6.0:** Introduced Drift Detection (Baseline Comparison).
+*   **v5.7:** Added detailed Antivirus state translations for non-English Windows.
+*   **v4.4:** Implemented Hybrid OS detection (CIM + Registry).
+*   **v3.0:** Introduced JSON report export for dashboard integration.
+*   **v1.0:** Initial Release (Rule-based Audit).
 
 ---
 
-*Verified by LOCKON Defense System* 🛡️
+##  License
+
+This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
+
+> Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files...
+
+---
+
+*Verified by LOCKON Defense System*

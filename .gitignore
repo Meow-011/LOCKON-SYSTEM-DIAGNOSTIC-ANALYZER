@@ -1,9 +1,5 @@
 # User files to ignore
-*Generate-Dashboardxxx.ps1
-*Script ทำมือ.txt
 *.zip
-*.log
-Debug.log
 
 # Output directories
 AuditReports/
