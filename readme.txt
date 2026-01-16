@@ -1,3 +1,0 @@
-- รันไฟล์ LOCKON_PCheck.bat จากนั้น UAC จะขอ permission สิทธิ์ Admin
-- กด query ตาม option ที่ต้องการ
-- หลังจากเสร็จแล้วกด 4 ไม่ก็ปิดหน้า terminal ไปได้เลย
