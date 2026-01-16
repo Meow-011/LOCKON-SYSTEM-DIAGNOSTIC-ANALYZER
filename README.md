@@ -104,15 +104,3 @@ Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
 
 **Q: "Access Denied" errors?**
 **A:** This LOCKON requires **Administrator Privileges** to access the Registry, Security Event Logs, and System Folders. Please run `LOCKON_PCheck.bat` as Admin.
-
----
-
-##  Version History
-
-*   **v7.0:** Added Offline Threat DB & Process Hash Analysis.
-*   **v6.4:** Refined HTML Report template and corrected table alignment.
-*   **v6.0:** Introduced Drift Detection (Baseline Comparison).
-*   **v5.7:** Added detailed Antivirus state translations for non-English Windows.
-*   **v4.4:** Implemented Hybrid OS detection (CIM + Registry).
-*   **v3.0:** Introduced JSON report export for dashboard integration.
-*   **v1.0:** Initial Release (Rule-based Audit).
