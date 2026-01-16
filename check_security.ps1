@@ -425,9 +425,6 @@ $AuditResults.UAC = $UacCheck
 
 
 # ============================================================
-# --- 10. Review Automatic Services ---
-# ============================================================
-# ============================================================
 # --- 10. Check for Suspicious Services (Non-Standard Paths) ---
 # ============================================================
 Write-SectionHeader "10. Check for Suspicious Services (Non-Standard Paths)"
