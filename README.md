@@ -16,11 +16,13 @@
     *   **Logs:** Scans Security Event Logs (Last 24h) for Brute Force (4625), Log Clearing (1102), and New Users (4720).
 *   **Interactive Dashboard:** Generates a rich HTML report with sorting, filtering, and CSV export capabilities.
 
+![anime gif](images/Misato_Tachibana.gif)
+
 ---
 
 ## Installation & Usage
 
-1.  **Clone the Repository:**
+1.  **Clone the Repository:**z
     ```bash
     git clone https://github.com/Meow-011/LOCKON-SYSTEM-DIAGNOSTIC-ANALYZER.git
     cd LOCKON-SYSTEM-DIAGNOSTIC-ANALYZER
