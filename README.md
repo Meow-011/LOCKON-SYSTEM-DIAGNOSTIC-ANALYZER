@@ -22,7 +22,7 @@
 
 ## Installation & Usage
 
-1.  **Clone the Repository:**z
+1.  **Clone the Repository:**
     ```bash
     git clone https://github.com/Meow-011/LOCKON-SYSTEM-DIAGNOSTIC-ANALYZER.git
     cd LOCKON-SYSTEM-DIAGNOSTIC-ANALYZER
