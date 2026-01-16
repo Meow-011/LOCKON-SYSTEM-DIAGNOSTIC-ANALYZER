@@ -112,7 +112,3 @@ Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
 *   **v4.4:** Implemented Hybrid OS detection (CIM + Registry).
 *   **v3.0:** Introduced JSON report export for dashboard integration.
 *   **v1.0:** Initial Release (Rule-based Audit).
-
----
-
-*Verified by LOCKON Defense System*
