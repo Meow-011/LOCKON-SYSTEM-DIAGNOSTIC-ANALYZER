@@ -46,7 +46,9 @@
 
 ## Configuration Guide (`config.psd1`)
 
-LOCKON is highly customizable. You can adjust the security policy in `config.psd1`:
+![Config Preview](images/config_preview.png)
+
+This LOCKON is highly customizable. You can adjust the security policy in `config.psd1`:
 
 *   **RiskyPorts:** Define which TCP/UDP ports are considered dangerous.
     *   *Example:* Add port `8080` if you want to flag Web Proxies.
@@ -99,7 +101,7 @@ Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
 *Tip: You can revert this later by setting it back to `Restricted`.*
 
 **Q: "Access Denied" errors?**
-**A:** LOCKON requires **Administrator Privileges** to access the Registry, Security Event Logs, and System Folders. Please run `LOCKON_PCheck.bat` as Admin.
+**A:** This LOCKON requires **Administrator Privileges** to access the Registry, Security Event Logs, and System Folders. Please run `LOCKON_PCheck.bat` as Admin.
 
 ---
 
