@@ -157,9 +157,8 @@ This LOCKON is highly customizable. You can adjust the security policy in `confi
 | **28** | DNS Analyzer (Mining/C2) | Advanced regex scan of DNS Cache for known Crypto Mining or C2 patterns. |
 | **29** | UserAssist History | Decodes ROT13 UserAssist keys to see *exactly* what programs were run and when. |
 | **30** | Recycle Bin Scavenger | Recovers metadata of deleted files to find "Evidence Elimination" attempts. |
-| **31** | Protocol Hunter | Checks for vulnerable legacy protocols like SMBv1 (WannaCry vector). |
-| **32** | Office Security | Checks VBA Macro security settings (TrustVBA, DisableAll). |
-| **33** | Software Inventory | Dumps full list of installed software (Control Panel + Store Apps). |
+| **31** | Office Security | Checks VBA Macro security settings (TrustVBA, DisableAll). |
+| **32** | Software Inventory | Dumps full list of installed software (Control Panel + Store Apps). |
 
 </details>
 
