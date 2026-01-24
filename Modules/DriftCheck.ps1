@@ -18,9 +18,9 @@ function Invoke-LockonDriftCheck {
         
         # Fallback
         if (-not $BaselinePath) {
-            $BaselinePath = Join-Path $PSScriptRoot "config_baseline.json"
+            $BaselinePath = Join-Path $PSScriptRoot "Database\config_baseline.json"
             if (-not (Test-Path $BaselinePath)) {
-                $BaselinePath = Join-Path (Split-Path $PSScriptRoot -Parent) "config_baseline.json"
+                $BaselinePath = Join-Path (Split-Path $PSScriptRoot -Parent) "Database\config_baseline.json"
             }
         }
 

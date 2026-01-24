@@ -9,18 +9,22 @@
 
 ![Dashboard Preview](images/dashboard_preview.png)
 
-## Table of Contents
-*   [Key Features](#key-features)
-*   [Tech Stack](#tech-stack)
-*   [Installation & Usage](#installation--usage)
-*   [Project Structure](#project-structure)
-*   [Configuration Guide](#configuration-guide-configpsd1)
-*   [Detailed Audit Checklist](#detailed-audit-checklist)
-*   [Developer Guide](#developer-guide-extensibility)
-*   [Troubleshooting](#troubleshooting)
-
 ---
 
+## Concept of Operations (ConOps)
+
+**"Tactical Security. Zero Footprint."**
+
+LOCKON is engineered for **Portable "Plug-and-Play" Audits**. It eliminates the need for complex agent installations, making it the perfect tool for rapid assessments across disconnected or high-security environments.
+
+*   **Step 1: Deploy (Flash & Go)**
+    *   Load LOCKON onto a secure **USB Flash Drive**.
+*   **Step 2: Engage (Scan)**
+    *   Plug into any target machine in the organization.
+    *   Run `LOCKON_PCheck.bat` immediately (No install required).
+*   **Step 3: Analyze (Dashboard)**
+    *   Instant HTML Dashboard generation for on-site analysis.
+    *   Consolidate results from multiple units into a single view.
 
 ---
 
@@ -37,8 +41,6 @@
     *   **Unit Management:** Filter by Unit/Department, collapse sections for better visibility, and export specific Unit data to CSV.
     *   **Visual Forensics:** Highlighting for Risky Ports, Dangerous Extensions, and Suspicious Events.
 
-![anime gif](images/Misato_Tachibana_banner.gif)
-
 ---
 
 ## Tech Stack
@@ -50,7 +52,6 @@
 
 ---
 
-
 ## Installation & Usage
 
 1.  **Clone the Repository:**
@@ -58,6 +59,7 @@
     git clone https://github.com/Meow-011/LOCKON-SYSTEM-DIAGNOSTIC-ANALYZER.git
     cd LOCKON-SYSTEM-DIAGNOSTIC-ANALYZER
     ```
+    > **💡 Tip:** You can copy this entire folder to a **USB Flash Drive** to perform portable scans on offline machines.
 
 2.  **Run the Tool:**
     *   **Double-click** `LOCKON_PCheck.bat` (Recommended - Auto-Admin check)
@@ -78,8 +80,6 @@
 
 ---
 
----
-
 ## Project Structure
 
 ```text
@@ -92,10 +92,12 @@ LOCKON-SYSTEM-DIAGNOSTIC-ANALYZER/
 ├── LOCKON_Lib.ps1          # [Library] Shared functions and utilities
 │
 ├── Modules/                # [Logic] Individual Security Check scripts
-│   ├── SystemChecks.ps1    # OS, Updates, UAC, AV
+│   ├── SystemChecks.ps1    # OS, Updates, UAC, AV, ShadowCopy
 │   ├── NetworkChecks.ps1   # Firewall, Ports, DNS, Hosts
-│   ├── UserLogChecks.ps1   # Event Logs, Admins, RDP
-│   └── ...
+│   ├── UserLogChecks.ps1   # Event Logs, Admins, RDP, UserAssist
+│   ├── AppServiceChecks.ps1# Services, Startup, Tasks, Extensions
+│   ├── FileForensicsChecks.ps1 # Hashes, Browser History, Recycle Bin
+│   └── DriftCheck.ps1      # System Baseline & Drift Detection
 │
 ├── AuditReports/           # [Output] Generated HTML/JSON Reports (GitIgnored)
 └── Database/               # [Data] Definition files
@@ -174,6 +176,8 @@ LOCKON is designed with a **Modular Architecture**. You can easily add new Secur
     *   *Output:* Returns a Hashtable with `Status`, `Message`, and `Data`.
 3.  **Register Module:** Add your new script filename to the `$ModuleFiles` list in `check_security.ps1`.
 4.  **(Optional) Add to Menu:** Update `$Checks` array in `LOCKON_Menu.ps1` to include it in the Custom Scan list.
+
+![anime gif](images/Misato_Tachibana_banner.gif)
 
 ---
 

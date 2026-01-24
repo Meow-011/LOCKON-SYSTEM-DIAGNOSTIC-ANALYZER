@@ -112,8 +112,9 @@ function Invoke-LockonSystemChecks {
         
         # Fallback if Config doesn't have it (Backward Compatibility/Safety)
         if (-not $KbListPath) {
-             $KbListPath = Join-Path $PSScriptRoot "critical_kbs.txt"
-             if(-not (Test-Path $KbListPath)) { $KbListPath = Join-Path (Split-Path $PSScriptRoot -Parent) "critical_kbs.txt" }
+             # Fallback if Config doesn't have it (Backward Compatibility/Safety)
+             $KbListPath = Join-Path $PSScriptRoot "Database\critical_kbs.txt"
+             if(-not (Test-Path $KbListPath)) { $KbListPath = Join-Path (Split-Path $PSScriptRoot -Parent) "Database\critical_kbs.txt" }
         }
 
         if (Test-Path $KbListPath) {

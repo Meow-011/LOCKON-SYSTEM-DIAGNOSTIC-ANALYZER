@@ -17,7 +17,7 @@ if (Test-Path $LibPath) {
 
 # Paths are handled in Lib, but we keep local references for editors
 $ConfigPath = Join-Path $ScriptPath "config.psd1"
-$KbPath = Join-Path $ScriptPath "critical_kbs.txt"
+$KbPath = Join-Path $ScriptPath "Database\critical_kbs.txt"
 
 function Show-Header {
     Clear-Host

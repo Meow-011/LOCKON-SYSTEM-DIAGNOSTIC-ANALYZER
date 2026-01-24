@@ -110,7 +110,7 @@ function Verify-Signature {
 
 # --- Function: Get-LockonUnit (Unit Selection System) ---
 function Get-LockonUnit {
-    $UnitConfigFile = Join-Path $PSScriptRoot "config_units.json"
+    $UnitConfigFile = Join-Path $PSScriptRoot "Database\config_units.json"
     $Units = @()
 
     # Load existing units (Force Strings)

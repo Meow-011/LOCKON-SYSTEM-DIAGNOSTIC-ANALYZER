@@ -170,10 +170,10 @@
     # These paths are relative to the script execution folder ($PSScriptRoot).
     # Modules should use these values via $Config.SystemPaths
     SystemPaths = @{
-        CriticalKBs  = "critical_kbs.txt"
-        ThreatDB     = "threat_db.txt"
-        Baseline     = "config_baseline.json"
-        UnitsConfig  = "config_units.json"
+        CriticalKBs  = "Database/critical_kbs.txt"
+        ThreatDB     = "Database/threat_db.txt"
+        Baseline     = "Database/config_baseline.json"
+        UnitsConfig  = "Database/config_units.json"
     }
 
     # (v8.3) Main Report Folder (Relative to script root)

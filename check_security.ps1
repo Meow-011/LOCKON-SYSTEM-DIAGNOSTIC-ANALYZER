@@ -60,8 +60,8 @@ if ($Config.SystemPaths) {
     } -Force
 } else {
     # Fallback for old configs
-    $KbListPath = Join-Path $PSScriptRoot "critical_kbs.txt"
-    $ThreatDbPath = Join-Path $PSScriptRoot "threat_db.txt"
+    $KbListPath = Join-Path $PSScriptRoot "Database\critical_kbs.txt"
+    $ThreatDbPath = Join-Path $PSScriptRoot "Database\threat_db.txt"
 }
 
 # Config is now loaded via Load-LockonConfig

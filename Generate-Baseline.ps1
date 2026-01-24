@@ -17,7 +17,7 @@ Write-Host "   LOCKON SYSTEM BASELINE GENERATOR" -ForegroundColor White
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host ""
 
-$BaselineFile = Join-Path $PSScriptRoot "config_baseline.json"
+$BaselineFile = Join-Path $PSScriptRoot "Database\config_baseline.json"
 $BaselineData = @{}
 
 # --- 1. OS Information ---

@@ -17,9 +17,8 @@ function Invoke-LockonFileForensicsChecks {
         $ThreatDbPath = $Config.ResolvedPaths.ThreatDB
         
         if (-not $ThreatDbPath) {
-             # Fallback
-             $ThreatDbPath = Join-Path $PSScriptRoot "threat_db.txt"
-             if(-not (Test-Path $ThreatDbPath)) { $ThreatDbPath = Join-Path (Split-Path $PSScriptRoot -Parent) "threat_db.txt" }
+             $ThreatDbPath = Join-Path $PSScriptRoot "Database\threat_db.txt"
+             if(-not (Test-Path $ThreatDbPath)) { $ThreatDbPath = Join-Path (Split-Path $PSScriptRoot -Parent) "Database\threat_db.txt" }
         }
 
         if (Test-Path $ThreatDbPath) {

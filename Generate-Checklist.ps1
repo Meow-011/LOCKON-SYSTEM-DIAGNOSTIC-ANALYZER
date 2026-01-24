@@ -87,7 +87,7 @@ try {
 # ==============================================================================
 Write-HostInfo "[3/7] Checking Critical Patches..."
 try {
-    $KbListPath = Join-Path $PSScriptRoot "critical_kbs.txt"
+    $KbListPath = Join-Path $PSScriptRoot "Database\critical_kbs.txt"
     if (Test-Path $KbListPath) {
         $PolicyKBs = Get-Content $KbListPath
         $InstalledKBs = (Get-Hotfix).HotFixID
