@@ -85,24 +85,24 @@ LOCKON: SYSTEM DIAGNOSTIC ANALYZER is engineered for **Portable "Plug-and-Play" 
 ```text
 LOCKON-SYSTEM-DIAGNOSTIC-ANALYZER/
 ├── LOCKON-SYSTEM_DIAGNOSTIC_ANALYZER.bat       # [Launcher] Auto-elevates to Admin and starts the Menu
-├── LOCKON_Menu.ps1         # [Main Menu] Interactive console for selecting tools
-├── check_security.ps1      # [Core Engine] Main script coordinating the audit logic
-├── Generate-Dashboard.ps1  # [Reporting] Aggregates JSON reports into the HTML Dashboard
-├── config.psd1             # [Config]/ Settings, Policies, and Global constraints
-├── LOCKON_Lib.ps1          # [Library] Shared functions and utilities
+├── LOCKON_Menu.ps1                             # [Main Menu] Interactive console for selecting tools
+├── check_security.ps1                          # [Core Engine] Main script coordinating the audit logic
+├── Generate-Dashboard.ps1                      # [Reporting] Aggregates JSON reports into the HTML Dashboard
+├── config.psd1                                 # [Config]/ Settings, Policies, and Global constraints
+├── LOCKON_Lib.ps1                              # [Library] Shared functions and utilities
 │
-├── Modules/                # [Logic] Individual Security Check scripts
-│   ├── SystemChecks.ps1    # OS, Updates, UAC, AV, ShadowCopy
-│   ├── NetworkChecks.ps1   # Firewall, Ports, DNS, Hosts
-│   ├── UserLogChecks.ps1   # Event Logs, Admins, RDP, UserAssist
-│   ├── AppServiceChecks.ps1# Services, Startup, Tasks, Extensions
-│   ├── FileForensicsChecks.ps1 # Hashes, Browser History, Recycle Bin
-│   └── DriftCheck.ps1      # System Baseline & Drift Detection
+├── Modules/                                    # [Logic] Individual Security Check scripts
+│   ├── SystemChecks.ps1                        # OS, Updates, UAC, AV, ShadowCopy
+│   ├── NetworkChecks.ps1                       # Firewall, Ports, DNS, Hosts
+│   ├── UserLogChecks.ps1                       # Event Logs, Admins, RDP, UserAssist
+│   ├── AppServiceChecks.ps1                    # Services, Startup, Tasks, Extensions
+│   ├── FileForensicsChecks.ps1                 # Hashes, Browser History, Recycle Bin
+│   └── DriftCheck.ps1                          # System Baseline & Drift Detection
 │
-├── AuditReports/           # [Output] Generated HTML/JSON Reports (GitIgnored)
-└── Database/               # [Data] Definition files
-    ├── threat_db.txt       # Known malicious file hashes
-    └── critical_kbs.txt    # List of required security hotfixes
+├── AuditReports/                               # [Output] Generated HTML/JSON Reports (GitIgnored)
+└── Database/                                   # [Data] Definition files
+    ├── threat_db.txt                           # Known malicious file hashes
+    └── critical_kbs.txt                        # List of required security hotfixes
 ```
 
 ---
