@@ -21,7 +21,7 @@ LOCKON: SYSTEM DIAGNOSTIC ANALYZER is engineered for **Portable "Plug-and-Play" 
     *   Load LOCKON onto a secure **USB Flash Drive**.
 *   **Step 2: Engage (Scan)**
     *   Plug into any target machine in the organization.
-    *   Run `LOCKON-SYSTEM_DIAGNOSTIC_ANALYZER` immediately (No install required).
+    *   Run `LOCKON-SYSTEM_DIAGNOSTIC_ANALYZER.bat` immediately (No install required).
 *   **Step 3: Analyze (Dashboard)**
     *   Instant HTML Dashboard generation for on-site analysis.
     *   Consolidate results from multiple units into a single view.
