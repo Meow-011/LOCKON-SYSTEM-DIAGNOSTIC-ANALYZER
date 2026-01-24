@@ -897,7 +897,7 @@ function Generate-HtmlReport($Results) {
 
     # --- 27. Local Admin Hunter ---
     if ($Results.LocalAdminsHunter -and $Results.LocalAdminsHunter.Message -ne "Skipped") {
-    $StatusClass = "status-info"
+    $StatusClass = "status-" + $Results.LocalAdminsHunter.Status.ToLower()
 
     
     $HtmlBody += "<tr><td><strong>27. Local Admin Hunter</strong></td>"
