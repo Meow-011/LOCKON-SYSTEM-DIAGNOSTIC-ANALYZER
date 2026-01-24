@@ -84,7 +84,7 @@ LOCKON: SYSTEM DIAGNOSTIC ANALYZER is engineered for **Portable "Plug-and-Play" 
 
 ```text
 LOCKON-SYSTEM-DIAGNOSTIC-ANALYZER/
-├── LOCKON_PCheck.bat       # [Launcher] Auto-elevates to Admin and starts the Menu
+├── LOCKON-SYSTEM_DIAGNOSTIC_ANALYZER.bat       # [Launcher] Auto-elevates to Admin and starts the Menu
 ├── LOCKON_Menu.ps1         # [Main Menu] Interactive console for selecting tools
 ├── check_security.ps1      # [Core Engine] Main script coordinating the audit logic
 ├── Generate-Dashboard.ps1  # [Reporting] Aggregates JSON reports into the HTML Dashboard
