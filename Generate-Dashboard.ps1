@@ -77,6 +77,7 @@ $HtmlTemplate = @'
         body { font-family: 'Inter', sans-serif; }
         .status-pass { background-color: #dcfce7; color: #166534; }
         .status-fail { background-color: #fee2e2; color: #991b1b; }
+        .status-warn { background-color: #fefce8; color: #854d0e; }
         .status-info { background-color: #e0f2fe; color: #075985; }
         
         th { position: sticky; top: 0; background-color: #f9fafb; cursor: pointer; user-select: none; }
