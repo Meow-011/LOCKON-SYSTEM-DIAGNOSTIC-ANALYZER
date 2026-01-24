@@ -7,7 +7,7 @@
 
 **LOCKON: SYSTEM DIAGNOSTIC ANALYZER** is an automated PowerShell security auditing and forensics tool designed for Windows environments. It performs deep system inspections to detect misconfigurations, potential threats, and suspicious activities using a baseline-comparison approach.
 
-![Dashboard Preview](images/dashboard_preview.png)
+![Dashboard Preview](images/terminal_preview.png)
 
 ---
 
