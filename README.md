@@ -15,7 +15,7 @@
 
 **"Tactical Security. Zero Footprint."**
 
-LOCKON is engineered for **Portable "Plug-and-Play" Audits**. It eliminates the need for complex agent installations, making it the perfect tool for rapid assessments across disconnected or high-security environments.
+LOCKON: SYSTEM DIAGNOSTIC ANALYZER is engineered for **Portable "Plug-and-Play" Audits**. It eliminates the need for complex agent installations, making it the perfect tool for rapid assessments across disconnected or high-security environments.
 
 *   **Step 1: Deploy (Flash & Go)**
     *   Load LOCKON onto a secure **USB Flash Drive**.
