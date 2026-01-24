@@ -6,9 +6,14 @@
            Detailed tables (like AV, Ports, Admins) are now
            embedded *inside* the "Message" cell of the simple list.
     (v6.3) ...
-.NOTES
-    Version: 6.4
+# .NOTES
+#     Version: 7.2 (Added Unit Selection)
 #>
+
+param (
+    [string]$Unit = "Unknown-Unit", # Audited Unit Name
+    [string[]]$SelectedChecks = @("All") # List of check IDs to run (e.g. "1", "30", "All")
+)
 
 # --- Load Shared Library ---
 $LibPath = Join-Path $PSScriptRoot "LOCKON_Lib.ps1"
@@ -19,23 +24,44 @@ if (Test-Path $LibPath) {
     exit
 }
 
-# --- 0. (v5.0) Script Setup & Config Loading ---
+
+
+# Helper Function: Check if a section should run
+function Should-RunCheck ($CheckId) {
+    if ($SelectedChecks -contains "All") { return $true }
+    if ($SelectedChecks -contains $CheckId) { return $true }
+    return $false
+}
+
+# --- 0. Script Setup & Config Loading ---
 # This script is designed to be run as Admin (by the .bat launcher)
 # It will only load config/defaults once.
 Clear-Host
-Write-SectionHeader "0. Initializing Script and Loading Configuration"
-
-# Set script path and find config
-$KbListPath = Join-Path $PSScriptRoot "critical_kbs.txt"
-$ThreatDbPath = Join-Path $PSScriptRoot "threat_db.txt"
+Write-SectionHeader "Initializing Script and Loading Configuration"
 
 # --- Load Config via Library ---
 $Config = Load-LockonConfig
 if (-not $Config) {
-    # If config loading fails, we must exit or define a fallback manually.
-    # For now, we trust the library to handle errors, but if specific Logic needs default config,
-    # we would define it here.
+    # If config loading fails, we must exit.
     exit
+}
+
+# Resolve Centralized Paths
+# Use paths defined in defined in config.psd1 relative to PSScriptRoot
+if ($Config.SystemPaths) {
+    $KbListPath = Join-Path $PSScriptRoot $Config.SystemPaths.CriticalKBs
+    $ThreatDbPath = Join-Path $PSScriptRoot $Config.SystemPaths.ThreatDB
+    
+    # Inject absolute paths back into Config for Modules to use easily
+    $Config | Add-Member -MemberType NoteProperty -Name "ResolvedPaths" -Value @{
+        CriticalKBs = $KbListPath
+        ThreatDB = $ThreatDbPath
+        Baseline = Join-Path $PSScriptRoot $Config.SystemPaths.Baseline
+    } -Force
+} else {
+    # Fallback for old configs
+    $KbListPath = Join-Path $PSScriptRoot "critical_kbs.txt"
+    $ThreatDbPath = Join-Path $PSScriptRoot "threat_db.txt"
 }
 
 # Config is now loaded via Load-LockonConfig
@@ -46,14 +72,17 @@ $MachineName = $env:COMPUTERNAME
 $DateStamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
 $ReportFileBase = "Report-$MachineName-$DateStamp"
 
-# (v3.1) Create the directory structure
+# Create the directory structure
 try {
-    # (v3.2) Fix: Join paths sequentially
-    $ChildReportPath = Join-Path $Config.MainReportFolder $MachineName
-    $ReportOutputDir = Join-Path $PSScriptRoot $ChildReportPath
-    
+    # Fix: Ensure parent directory exists first
+    $ParentReportPath = Join-Path $PSScriptRoot $Config.MainReportFolder
+    if (-not (Test-Path $ParentReportPath)) {
+        New-Item -ItemType Directory -Path $ParentReportPath -Force | Out-Null
+    }
+
+    $ReportOutputDir = Join-Path $ParentReportPath $MachineName
     if (-not (Test-Path $ReportOutputDir)) {
-        New-Item -ItemType Directory -Path $ReportOutputDir | Out-Null
+        New-Item -ItemType Directory -Path $ReportOutputDir -Force | Out-Null
     }
     
     $HtmlReportPath = Join-Path $ReportOutputDir "$ReportFileBase.html"
@@ -67,1046 +96,102 @@ try {
 }
 
 # --- Initialize Results Objects ---
-# (v3.1) Fix: Initialize as HashTable, convert to PSCustomObject at the end
+# Fix: Initialize as HashTable, convert to PSCustomObject at the end
 $AuditResults = @{
     ReportInfo = @{
         MachineName = $MachineName
         User = $env:USERNAME
+        Unit = $Unit # Store Unit Name
         Date = (Get-Date)
         ReportFileBase = $ReportFileBase
     }
     Policy = $Config # Store the policy used for this scan
 }
-# (v6.4) This is no longer used, Generate-HtmlReport builds the string directly.
+# This is no longer used, Generate-HtmlReport builds the string directly.
 # $HtmlReportBody = [System.Collections.ArrayList]@()
 
 
-# --- (v6.4) Helper function Add-HtmlRow is no longer needed ---
+# --- Helper function Add-HtmlRow is no longer needed ---
 
 
-Write-HostInfo "Starting scan on $MachineName..." # (v6.3) Aligned
-Write-HostInfo "HTML Report will be saved to: $HtmlReportPath" # (v6.3) Aligned
-Write-HostInfo "JSON Report will be saved to: $JsonReportPath" # (v6.3) Aligned
-
-# ============================================================
-# --- 1. Check Operating System Version ---
-# ============================================================
-Write-SectionHeader "1. Check Operating System Version"
-$OsCheck = @{ Status = "INFO"; Message = "" }
-try {
-    # (v4.4) HYBRID METHOD:
-    # 1. Get ProductName from CIM (like systeminfo)
-    $CimOs = Get-CimInstance Win32_OperatingSystem
-    $ProductName = $CimOs.Caption
-    
-    # 2. Get DisplayVersion/Build from Registry (more accurate)
-    $RegPath = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion"
-    $DisplayVersion = (Get-ItemProperty -Path $RegPath -Name "DisplayVersion").DisplayVersion
-    $Build = (Get-ItemProperty -Path $RegPath -Name "CurrentBuild").CurrentBuild
-    
-    if (-not $DisplayVersion) { $DisplayVersion = "(N/A)" }
-    
-    $OsCheck.Message = "$ProductName (Version: $DisplayVersion, Build: $Build)"
-    Write-HostInfo $OsCheck.Message # (v6.3) Aligned
-    $OsCheck.Data = @{
-        ProductName = $ProductName
-        DisplayVersion = $DisplayVersion
-        Build = $Build
-    }
-} catch {
-    $OsCheck.Status = "FAIL"
-    $OsCheck.Message = "Could not retrieve OS Version: $($_.Exception.Message)"
-    Write-HostFail $OsCheck.Message # (v6.3) Aligned
-}
-$AuditResults.OsInfo = $OsCheck
-
+Write-HostInfo "Starting scan on $MachineName..."
+Write-HostInfo "HTML Report will be saved to: $HtmlReportPath"
+Write-HostInfo "JSON Report will be saved to: $JsonReportPath"
 
 # ============================================================
-# --- 2. Check Network Configuration ---
+# --- Load and Execute Security Modules ---
 # ============================================================
-Write-SectionHeader "2. Check Network Configuration (Active Physical Adapters)"
-$NetCheck = @{ Status = "INFO"; Message = "" }
-try {
-    # Get adapters that are Physical AND connected ("Up")
-    $Adapters = Get-NetAdapter -Physical | Where-Object { $_.Status -eq 'Up' }
-    
-    if ($Adapters) {
-        $AdapterData = @()
-        foreach ($Adapter in $Adapters) {
-            $IpConfig = Get-NetIPConfiguration -InterfaceIndex $Adapter.InterfaceIndex
-            $IpV4 = ($IpConfig | Where-Object { $_.IPv4Address -ne $null }).IPv4Address.IPAddress
-            $IpV6 = ($IpConfig | Where-Object { $_.IPv6Address -ne $null }).IPv6Address.IPAddress
-            
-            $AdapterData += @{
-                Name = $Adapter.Name
-                InterfaceDescription = $Adapter.InterfaceDescription
-                MacAddress = $Adapter.MacAddress
-                IPv4Address = $IpV4
-                IPv6Address = $IpV6
-            }
-            Write-HostInfo "  - Found: $($Adapter.Name) ($($Adapter.MacAddress))" # (v6.3) Aligned
-            Write-HostInfo "    - IPv4: $IpV4" # (v6.3) Aligned
-        }
-        $NetCheck.Message = "Found $($Adapters.Count) active physical adapter(s)."
-        $NetCheck.Data = $AdapterData
-    } else {
-        $NetCheck.Message = "No active (connected) physical adapters found."
-        Write-HostInfo $NetCheck.Message # (v6.3) Aligned
-    }
-} catch {
-    $NetCheck.Status = "FAIL"
-    $NetCheck.Message = "Could not retrieve Network Info: $($_.Exception.Message)"
-    Write-HostFail $NetCheck.Message # (v6.3) Aligned
-}
-$AuditResults.NetworkConfig = $NetCheck
 
+# Refactored: Modules are now loaded from external files for better maintainability.
+$ModulesDir = Join-Path $PSScriptRoot "Modules"
+$ModuleFiles = @(
+    "SystemChecks.ps1",
+    "NetworkChecks.ps1",
+    "AppServiceChecks.ps1",
+    "FileForensicsChecks.ps1",
+    "UserLogChecks.ps1",
+    "DriftCheck.ps1"
+)
 
-# ============================================================
-# --- 3. Check OS Update Status ---
-# ============================================================
-Write-SectionHeader "3. Check Operating System (OS) Update Status"
-$OsUpdateCheck = @{ Status = "INFO"; Message = "" }
-try {
-    $LastUpdate = (Get-Hotfix | Sort-Object -Property InstalledOn -Descending)[0].InstalledOn
-    $OsUpdateCheck.Message = "System's last update was on: $($LastUpdate.ToString('yyyy-MM-dd'))"
-    Write-HostInfo $OsUpdateCheck.Message # (v6.3) Aligned
-    
-    # (v6.2) BUGFIX: Store as a dashboard-readable ISO 8601 string ("o")
-    # This fixes the [object Object] bug in the dashboard
-    $OsUpdateCheck.Data = @{ LastUpdateDate = $LastUpdate.ToString("o") }
-} catch {
-    $OsUpdateCheck.Status = "FAIL"
-    $OsUpdateCheck.Message = "Could not retrieve Hotfix info (Get-Hotfix failed). This may be a permissions issue or the service is stopped."
-    Write-HostFail $OsUpdateCheck.Message # (v6.3) Aligned
-}
-$AuditResults.OsUpdate = $OsUpdateCheck
+Write-HostInfo "Loading Security Modules..."
 
-
-# ============================================================
-# --- 4. Check Antivirus (AV/EDR) Status ---
-# ============================================================
-Write-SectionHeader "4. Check Antivirus (AV/EDR) Status"
-# (v6.5) FIX: Default status is FAIL, will turn PASS if at least one is running.
-$AvCheck = @{ Status = "FAIL"; Message = "" }
-$AvData = @()
-$AnyAvRunning = $false # (v6.5) New logic flag
-
-try {
-    # Get AV list from Security Center
-    $AvProducts = Get-CimInstance -Namespace "root\SecurityCenter2" -Query "SELECT * FROM AntiVirusProduct"
-    
-    if ($AvProducts) {
-        # Load translation map from config
-        $TranslationMap = @{}
-        $Config.AntivirusStateTranslations | ForEach-Object {
-            $TranslationMap[$_.Code] = $_
-        }
-        
-        foreach ($Product in $AvProducts) {
-            $Name = $Product.displayName
-            $State = $Product.productState
-            
-            $Translation = $TranslationMap["$State"]
-            if (-not $Translation) {
-                $Translation = @{ Status = "INFO"; Description = "Unknown State" }
-            }
-            
-            $AvData += @{
-                Name = $Name
-                State = "$State"
-                Status = $Translation.Status
-                Description = $Translation.Description
-            }
-            
-            # (v6.5) NEW LOGIC:
-            if ($Translation.Status -eq "Running") {
-                Write-HostPass "  - Found: $Name (State: $State, Status: $($Translation.Description))"
-                $AnyAvRunning = $true # Found at least one working AV!
-            } else {
-                # Changed from Write-HostFail to Info, because this might be intentional (e.g. Defender snoozed)
-                Write-HostInfo "  - Found: $Name (State: $State, Status: $($Translation.Description)) - (Inactive)"
-            }
-        }
-        
-        # Final Decision
-        if ($AnyAvRunning) {
-            $AvCheck.Status = "PASS"
-            $AvCheck.Message = "At least one AV product is running."
-        } else {
-            $AvCheck.Status = "FAIL"
-            $AvCheck.Message = "No active Antivirus products found."
-            Write-HostFail "  - CRITICAL: No AV products reported as 'Running'."
-        }
-        $AvCheck.Data = $AvData
-        
-    } else {
-        $AvCheck.Message = "No Antivirus products found via SecurityCenter2."
-        Write-HostFail $AvCheck.Message
-        $AvCheck.Data = $AvData
-    }
-} catch {
-    $AvCheck.Message = "Could not query SecurityCenter2: $($_.Exception.Message). (This namespace may not exist on Windows Server)."
-    Write-HostFail $AvCheck.Message
-}
-$AuditResults.Antivirus = $AvCheck
-
-
-# ============================================================
-# --- 5. Check for Critical Security Patches (KB) ---
-# ============================================================
-Write-SectionHeader "5. Check for Critical Security Patches (KB)"
-$KbCheck = @{ Status = "INFO"; Message = "" }
-try {
-    # Get the system's installed KBs (Hotfix IDs)
-    $InstalledKBs = (Get-Hotfix).HotFixID
-    
-    # Get the policy KBs from the text file
-    if (Test-Path $KbListPath) {
-        # (v6.2) BUGFIX: Sanitize input. Get-Content can return objects.
-        # We must ensure we get an array of strings.
-        $PolicyKBs = Get-Content $KbListPath | ForEach-Object { "$_" }
-        
-        Write-HostInfo "Checking against master list of $($PolicyKBs.Count) KBs from $KbListPath" # (v6.3) Aligned
-
-        # Find matches
-        $FoundKBs = @()
-        $MissingKBs = @()
-        
-        foreach ($kb in $PolicyKBs) {
-            if ($InstalledKBs -contains $kb) {
-                $FoundKBs += $kb
-            } else {
-                $MissingKBs += $kb
-            }
-        }
-
-        # (v6.2) NEW LOGIC: "PASS if Found > 0"
-        # This assumes the list is a MASTER list for all OSes (XP, 7, 10, 11)
-        # and finding any one of them means the machine is patched for its OS.
-        if ($FoundKBs.Count -gt 0) {
-            $KbCheck.Status = "PASS"
-            $KbCheck.Message = "Found $($FoundKBs.Count) matching critical KB(s) from the master list."
-            Write-HostPass $KbCheck.Message # (v6.3) Aligned
-            Write-HostPass "  - Found: $($FoundKBs -join ', ')" # (v6.3) Aligned
-        } else {
-            $KbCheck.Status = "FAIL"
-            $KbCheck.Message = "Did not find any matching KBs from the master list ($($MissingKBs.Count) missing)."
-            Write-HostFail $KbCheck.Message # (v6.3) Aligned
-        }
-
-        # (v6.2) BUGFIX: Store only the string arrays, not the full objects
-        $KbCheck.Data = @{
-            Found = $FoundKBs
-            Missing = $MissingKBs
-        }
-        
-    } else {
-        $KbCheck.Message = "critical_kbs.txt not found. Skipping check."
-        Write-HostInfo $KbCheck.Message # (v6.3) Aligned
-    }
-} catch {
-    $KbCheck.Status = "FAIL"
-    $KbCheck.Message = "Could not check KBs: $($_.Exception.Message)"
-    Write-HostFail $KbCheck.Message # (v6.3) Aligned
-}
-$AuditResults.CriticalPatches = $KbCheck
-
-
-# ============================================================
-# --- 6 & 7. Check Listening Ports ---
-# ============================================================
-Write-SectionHeader "6 & 7. Check Listening Ports"
-$PortCheck = @{ Status = "PASS"; Message = "" }
-try {
-    # (v4.0) Get port numbers from the config object
-    $RiskyPortNumbers = $Config.RiskyPorts | ForEach-Object { $_.Port }
-    Write-HostInfo "Policy: Checking for $($RiskyPortNumbers.Count) risky ports: $($RiskyPortNumbers -join ', ')" # (v6.3) Aligned
-    
-    $ListeningPorts = Get-NetTCPConnection -State Listen | Select-Object -ExpandProperty LocalPort -Unique
-    
-    $FoundRiskyPorts = @()
-    foreach ($port in $ListeningPorts) {
-        if ($RiskyPortNumbers -contains $port) {
-            # Find the full policy object for this port
-            $Policy = $Config.RiskyPorts | Where-Object { $_.Port -eq $port }
-            $FoundRiskyPorts += $Policy
-        }
-    }
-    
-    if ($FoundRiskyPorts.Count -gt 0) {
-        $PortCheck.Status = "FAIL"
-        $PortCheck.Message = "Found $($FoundRiskyPorts.Count) risky LISTENING ports: $($FoundRiskyPorts.Port -join ', ')"
-        Write-HostFail $PortCheck.Message # (v6.3) Aligned
-        foreach ($p in $FoundRiskyPorts) {
-            Write-HostFail "  - Port $($p.Port) ($($p.Service)): $($p.Risk)" # (v6.3) Aligned
+foreach ($ModName in $ModuleFiles) {
+    $ModPath = Join-Path $ModulesDir $ModName
+    if (Test-Path $ModPath) {
+        try {
+            . $ModPath
+        } catch {
+             Write-HostFail "CRITICAL ERROR: Failed to load module $ModName : $($_.Exception.Message)"
         }
     } else {
-        $PortCheck.Message = "No risky ports (from list) are LISTENING."
-        Write-HostPass $PortCheck.Message # (v6.3) Aligned
-    }
-    
-    $PortCheck.Data = @{
-        AllListening = $ListeningPorts
-        FoundRisky = $FoundRiskyPorts
-        Policy = $Config.RiskyPorts # (v4.0) Add policy to data for reference
-    }
-    
-} catch {
-    $PortCheck.Status = "FAIL"
-    $PortCheck.Message = "Could not check ports (Get-NetTCPConnection failed): $($_.Exception.Message)"
-    Write-HostFail $PortCheck.Message # (v6.3) Aligned
-}
-$AuditResults.ListeningPorts = $PortCheck
-
-
-# ============================================================
-# --- 8. Check Windows Firewall Status ---
-# ============================================================
-Write-SectionHeader "8. Check Windows Firewall Status"
-$FwCheck = @{ Status = "PASS"; Message = "" }
-$FwData = @()
-try {
-    $Profiles = Get-NetFirewallProfile
-    $AllEnabled = $true
-    
-    foreach ($Profile in $Profiles) {
-        $FwData += @{
-            Name = $Profile.Name
-            Enabled = $Profile.Enabled
-        }
-        if ($Profile.Enabled -ne "True") {
-            $AllEnabled = $false
-            Write-HostFail "  - Firewall Profile '$($Profile.Name)': DISABLED" # (v6.3) Aligned
-        } else {
-            Write-HostPass "  - Firewall Profile '$($Profile.Name)': Enabled" # (v6.3) Aligned
-        }
-    }
-    
-    if (-not $AllEnabled) {
-        $FwCheck.Status = "FAIL"
-        $FwCheck.Message = "At least one firewall profile is disabled."
-    } else {
-        $FwCheck.Message = "All firewall profiles are enabled."
-    }
-    $FwCheck.Data = $FwData
-    
-} catch {
-    $FwCheck.Status = "FAIL"
-    $FwCheck.Message = "Could not check firewall status (Get-NetFirewallProfile failed): $($_.Exception.Message)"
-    Write-HostFail $FwCheck.Message # (v6.3) Aligned
-}
-$AuditResults.Firewall = $FwCheck
-
-
-# ============================================================
-# --- 9. Check User Account Control (UAC) ---
-# ============================================================
-Write-SectionHeader "9. Check User Account Control (UAC)"
-$UacCheck = @{ Status = "FAIL"; Message = "" }
-try {
-    $UacValue = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "EnableLUA"
-    
-    if ($UacValue.EnableLUA -eq 1) {
-        $UacCheck.Status = "PASS"
-        $UacCheck.Message = "UAC is Enabled (EnableLUA = 1)"
-        Write-HostPass $UacCheck.Message # (v6.3) Aligned
-    } else {
-        $UacCheck.Message = "UAC is DISABLED (EnableLUA = 0)"
-        Write-HostFail $UacCheck.Message # (v6.3) Aligned
-    }
-    $UacCheck.Data = @{ EnableLUA = $UacValue.EnableLUA }
-    
-} catch {
-    $UacCheck.Status = "FAIL"
-    $UacCheck.Message = "Could not check UAC status: $($_.Exception.Message)"
-    Write-HostFail $UacCheck.Message # (v6.3) Aligned
-}
-$AuditResults.UAC = $UacCheck
-
-
-# ============================================================
-# --- 10. Review Automatic Services ---
-# ============================================================
-# ============================================================
-# --- 10. Check for Suspicious Services (Non-Standard Paths) ---
-# ============================================================
-Write-SectionHeader "10. Check for Suspicious Services (Non-Standard Paths)"
-$SvcCheck = @{ Status = "PASS"; Message = "" }
-$SvcData = @()
-try {
-    # Get services that are Auto or Running
-    $Services = Get-CimInstance -ClassName Win32_Service -Filter "StartMode = 'Auto' OR State = 'Running'"
-    
-    $SuspiciousServices = @()
-    
-    if ($Services) {
-        foreach ($Svc in $Services) {
-            $Path = $Svc.PathName
-            # Clean up path (remove quotes and arguments) to check location
-            if ($Path -match '^"([^"]+)"') { $CleanPath = $matches[1] }
-            elseif ($Path -match '^(\S+)') { $CleanPath = $matches[1] }
-            else { $CleanPath = $Path }
-            
-            # Use Library to verify signature
-            $SigStatus = Verify-Signature -Path $CleanPath
-            
-            # Logic: If NOT in C:\Windows or C:\Program Files, it's suspicious OR if signature is not trusted
-            if ($CleanPath -and (($CleanPath -notmatch "Windows") -and ($CleanPath -notmatch "Program Files")) -or ($SigStatus -ne "Trusted")) {
-                $SuspiciousServices += @{
-                    Name = $Svc.Name
-                    DisplayName = $Svc.DisplayName
-                    Path = $Path
-                    State = $Svc.State
-                    StartMode = $Svc.StartMode
-                    Signature = $SigStatus
-                }
-                if ($SigStatus -ne "Trusted") {
-                    Write-HostFail "  - [SUSPICIOUS] $($Svc.Name): $Path [Signature: $SigStatus]"
-                } else {
-                    Write-HostWarn "  - [NOTE] $($Svc.Name): $Path [Signature: $SigStatus]"
-                }
-            }
-        }
-    }
-    
-    if ($SuspiciousServices.Count -gt 0) {
-        $SvcCheck.Status = "FAIL"
-        $SvcCheck.Message = "Found $($SuspiciousServices.Count) services running from non-standard paths or with untrusted signatures (e.g. AppData, Temp)."
-    } else {
-        $SvcCheck.Message = "No services found running from suspicious paths or with untrusted signatures (checked $($Services.Count) services)."
-        Write-HostPass $SvcCheck.Message
-    }
-    $SvcCheck.Data = $SuspiciousServices
-    
-} catch {
-    $SvcCheck.Status = "FAIL"
-    $SvcCheck.Message = "Could not check services: $($_.Exception.Message)"
-    Write-HostFail $SvcCheck.Message
-}
-$AuditResults.AutomaticServices = $SvcCheck
-
-
-# ============================================================
-# --- 11. Check Local Administrators ---
-# ============================================================
-Write-SectionHeader "11. Check Local Administrators"
-$AdminCheck = @{ Status = "INFO"; Message = "" }
-$AdminData = @()
-try {
-    $AdminGroup = Get-LocalGroupMember -Group "Administrators"
-    
-    if ($AdminGroup) {
-        foreach ($Member in $AdminGroup) {
-            $AdminData += @{
-                Name = $Member.Name
-                ObjectClass = $Member.ObjectClass
-                PrincipalSource = $Member.PrincipalSource
-            }
-            Write-HostInfo "  - $($Member.Name) (Type: $($Member.ObjectClass), Source: $($Member.PrincipalSource))" # (v6.3) Aligned
-        }
-    }
-    $AdminCheck.Message = "Listing members of 'Administrators' group for manual review."
-    $AdminCheck.Data = $AdminData
-    Write-HostInfo $AdminCheck.Message # (v6.3) Aligned
-    
-} catch {
-    $AdminCheck.Status = "FAIL"
-    $AdminCheck.Message = "Could not check local admins (Get-LocalGroupMember failed): $($_.Exception.Message)"
-    Write-HostFail $AdminCheck.Message # (v6.3) Aligned
-}
-$AuditResults.LocalAdmins = $AdminCheck
-
-
-# ============================================================
-# --- 12. Check Open File Shares ---
-# ============================================================
-Write-SectionHeader "12. Check Open File Shares"
-$ShareCheck = @{ Status = "PASS"; Message = "" }
-$ShareData = @()
-try {
-    # Get shares, excluding default admin shares (C$, ADMIN$)
-    $Shares = Get-CimInstance -ClassName Win32_Share | Where-Object { $_.Name -notlike "*$" }
-    
-    if ($Shares) {
-        foreach ($Share in $Shares) {
-            $ShareAcl = Get-SmbShareAccess -Name $Share.Name
-            
-            $ShareData += @{
-                Name = $Share.Name
-                Path = $Share.Path
-                Access = $ShareAcl | Select-Object -Property AccountName, AccessControlType, AccessRight
-            }
-            
-            $IsOpen = $ShareAcl | Where-Object { ($_.AccountName -eq "Everyone") -and ($_.AccessRight -ne "Read") }
-            if ($IsOpen) {
-                $ShareCheck.Status = "FAIL"
-                Write-HostFail "  - [FAIL] Share '$($Share.Name)' ($($Share.Path)) grants Write/Change access to 'Everyone'." # (v6.3) Aligned
-            } else {
-                Write-HostInfo "  - [INFO] Share '$($Share.Name)' ($($Share.Path)) found. (No 'Everyone' write access)." # (v6.3) Aligned
-            }
-        }
-        if ($ShareCheck.Status -eq "FAIL") {
-            $ShareCheck.Message = "Found non-default shares, at least one is open to 'Everyone' with Write access."
-        } else {
-            $ShareCheck.Message = "Found non-default shares, but none grant 'Everyone' Write access."
-        }
-        
-    } else {
-        $ShareCheck.Message = "No non-default file shares found."
-        Write-HostPass $ShareCheck.Message # (v6.3) Aligned
-    }
-    $ShareCheck.Data = $ShareData
-    
-} catch {
-    $ShareCheck.Status = "FAIL"
-    $ShareCheck.Message = "Could not check file shares: $($_.Exception.Message)"
-    Write-HostFail $ShareCheck.Message
-}
-$AuditResults.FileShares = $ShareCheck
-
-
-# ============================================================
-# --- 13. Check Startup Items (Registry & Folder) ---
-# ============================================================
-Write-SectionHeader "13. Check Startup Items (Risky Paths)"
-$StartupCheck = @{ Status = "PASS"; Message = "" }
-$StartupData = @()
-try {
-    $StartupItems = Get-CimInstance -ClassName Win32_StartupCommand
-    $SuspiciousStartup = @()
-    
-    if ($StartupItems) {
-        foreach ($Item in $StartupItems) {
-            $Path = $Item.Command
-            # Extract EXE path for signature check
-            $CleanPath = $Path.Replace('"', '').Split(' ')[0]
-            $SigStatus = Verify-Signature -Path $CleanPath
-
-            # Check for risky paths OR Invalid Signature
-            if ($Path -match "AppData" -or $Path -match "Temp" -or $SigStatus -ne "Trusted") {
-                $SuspiciousStartup += @{
-                    Name = $Item.Name
-                    Command = $Path
-                    User = $Item.User
-                    Signature = $SigStatus
-                }
-                Write-HostFail "  - [SUSPICIOUS] $($Item.Name): $Path [Sig: $SigStatus]"
-            }
-        }
-    }
-    
-    if ($SuspiciousStartup.Count -gt 0) {
-        $StartupCheck.Status = "FAIL"
-        $StartupCheck.Message = "Found $($SuspiciousStartup.Count) startup items pointing to AppData/Temp or with untrusted signatures."
-    } else {
-        $StartupCheck.Message = "No suspicious startup items found."
-        Write-HostPass $StartupCheck.Message
-    }
-    $StartupCheck.Data = $SuspiciousStartup
-
-} catch {
-    $StartupCheck.Status = "FAIL"
-    $StartupCheck.Message = "Could not check startup items: $($_.Exception.Message)"
-    Write-HostFail $StartupCheck.Message
-}
-$AuditResults.Startup = $StartupCheck
-
-
-# ============================================================
-# --- 14. Check Unwanted Software (Policy Violation) ---
-# ============================================================
-Write-SectionHeader "14. Check Unwanted Software (Blacklist)"
-$SoftwareCheck = @{ Status = "PASS"; Message = "" }
-try {
-    # Get Unwanted List from Config
-    if ($Config.UnwantedSoftware) {
-        $Blacklist = $Config.UnwantedSoftware
-        Write-HostInfo "Checking against blacklist: $($Blacklist -join ', ')"
-        
-        # Get Installed Software (Registry - 32/64 bit)
-        $UninstallKeys = @(
-            "HKLM:\Setting\Microsoft\Windows\CurrentVersion\Uninstall",
-            "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
-        )
-        
-        $FoundUnwanted = @()
-        foreach ($Key in $UninstallKeys) {
-            # Check if key exists (PowerShell Core / older PS compatibility)
-             if (Test-Path $Key) {
-                Get-ChildItem -Path $Key -ErrorAction SilentlyContinue | ForEach-Object {
-                    $Props = Get-ItemProperty -Path $_.PSPath
-                    $DisplayName = $Props.DisplayName
-                    if ($DisplayName) {
-                        foreach ($BadApp in $Blacklist) {
-                            if ($DisplayName -match $BadApp) {
-                                $FoundUnwanted += @{ Name = $DisplayName; Policy = $BadApp }
-                                Write-HostFail "  - [VIOLATION] Found Blacklisted App: $DisplayName"
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        
-        if ($FoundUnwanted.Count -gt 0) {
-            $SoftwareCheck.Status = "FAIL"
-            $SoftwareCheck.Message = "Found $($FoundUnwanted.Count) prohibited software installations."
-            $SoftwareCheck.Data = $FoundUnwanted
-        } else {
-            $SoftwareCheck.Message = "No blacklisted software found."
-            Write-HostPass $SoftwareCheck.Message
-            $SoftwareCheck.Data = @()
-        }
-        
-    } else {
-        $SoftwareCheck.Message = "No unwanted software policy defined in config."
-        Write-HostInfo $SoftwareCheck.Message
-    }
-
-} catch {
-    $SoftwareCheck.Status = "FAIL"
-    $SoftwareCheck.Message = "Could not check installed software: $($_.Exception.Message)"
-    Write-HostFail $SoftwareCheck.Message
-}
-$AuditResults.UnwantedSoftware = $SoftwareCheck
-
-
-$AuditResults.FileShares = $ShareCheck
-
-
-# ============================================================
-# --- 15. File Hash Analysis (Running Processes) ---
-# ============================================================
-Write-SectionHeader "15. File Hash Analysis (Threat Hunting)"
-$HashCheck = @{ Status = "INFO"; Message = ""; Data = @(); Threats = @() }
-
-# (v7.0) Load Offline Threat DB
-$ThreatHashes = [System.Collections.Generic.HashSet[string]]::new()
-if (Test-Path $ThreatDbPath) {
-    Write-HostInfo "Loading Offline Threat DB from threat_db.txt..."
-    try {
-        Get-Content $ThreatDbPath | ForEach-Object { $null = $ThreatHashes.Add($_.Trim().ToLower()) }
-        Write-HostPass "Loaded $($ThreatHashes.Count) known malware hashes."
-    } catch {
-        Write-HostFail "Error loading threat DB: $($_.Exception.Message)"
+        Write-HostFail "CRITICAL ERROR: Module $ModName not found at $ModPath"
     }
 }
 
-try {
-    # Get unique executable paths from running processes
-    $Processes = Get-Process | Select-Object -ExpandProperty Path -ErrorAction SilentlyContinue | Sort-Object -Unique | Where-Object { $_ -and (Test-Path $_) }
-    
-    $HashList = @()
-    $ThreatsFound = @()
+# Define Execution Order and Invoke
+# We maintain the sequential logic by calling them in order and merging results.
 
-    if ($Processes) {
-        Write-HostInfo "Calculating SHA-256 hashes for $($Processes.Count) unique processes..."
-        foreach ($ProcPath in $Processes) {
-            try {
-                $HashObj = Get-FileHash -Path $ProcPath -Algorithm SHA256 -ErrorAction SilentlyContinue
-                if ($HashObj) {
-                    $HashMin = $HashObj.Hash.ToLower()
-                    
-                    if ($ThreatHashes.Contains($HashMin)) {
-                         $ThreatsFound += @{
-                            FileName = [System.IO.Path]::GetFileName($ProcPath)
-                            Path = $ProcPath
-                            Hash = $HashObj.Hash
-                         }
-                         Write-HostFail "!!! CRITICAL THREAT DETECTED !!! Process: $($ProcPath)"
-                    }
-
-                    $HashList += @{
-                        FileName = [System.IO.Path]::GetFileName($ProcPath)
-                        Path = $ProcPath
-                        Hash = $HashObj.Hash
-                    }
-                }
-            } catch {}
-        }
-    }
-
-    $HashCheck.Data = $HashList
-    $HashCheck.Threats = $ThreatsFound
-
-    if ($ThreatsFound.Count -gt 0) {
-        $HashCheck.Status = "FAIL"
-        $HashCheck.Message = "CRITICAL: Found $($ThreatsFound.Count) active processes matching known MALWARE hashes!"
-    } else {
-        $HashCheck.Message = "Calculated hashes for $($HashList.Count) processes. No known threats found."
-        Write-HostPass "Successfully analyzed process hashes. No threats detected."
-    }
-
-} catch {
-    $HashCheck.Status = "FAIL"
-    $HashCheck.Message = "Hash analysis failed: $($_.Exception.Message)"
-    Write-HostFail $HashCheck.Message
-}
-$AuditResults.HashAnalysis = $HashCheck
-
-
-# ============================================================
-# --- 16. Drift Detection (Baseline Comparison) ---
-# ============================================================
-Write-SectionHeader "16. Drift Detection (Baseline Comparison)"
-$DriftCheck = @{ Status = "INFO"; Message = "No baseline found (First Scan)."; Data = @{} }
-
-try {
-    # 1. Find Latest Previous Report (JSON)
-    $MachineName = $env:COMPUTERNAME
-    $ReportFolder = Join-Path $PSScriptRoot "AuditReports\$MachineName"
-    
-    # Get all JSON reports, exclude current session (if any temp file exists, though usually we haven't saved yet)
-    if (Test-Path $ReportFolder) {
-        $PreviousReportFile = Get-ChildItem -Path $ReportFolder -Filter "Report-*.json" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-        
-        if ($PreviousReportFile) {
-            Write-HostInfo "Baseline found: $($PreviousReportFile.Name)"
-            $Baseline = Get-Content -Path $PreviousReportFile.FullName -Raw | ConvertFrom-Json
-            
-            $DriftFound = $false
-            $DriftData = @{
-                NewPorts = @()
-                NewAdmins = @()
-                NewSoftware = @()
-                ChangedHashes = @()
-            }
-
-            # --- Compare Ports ---
-            $BasePorts = @($Baseline.ListeningPorts.Data.FoundRisky.Port)
-            foreach ($p in $AuditResults.ListeningPorts.Data.FoundRisky) {
-                if ($p.Port -notin $BasePorts) {
-                    $DriftData.NewPorts += $p
-                    $DriftFound = $true
-                }
-            }
-
-            # --- Compare Admins ---
-            $BaseAdmins = @($Baseline.LocalAdmins.Data.Name)
-            foreach ($a in $AuditResults.LocalAdmins.Data) {
-                if ($a.Name -notin $BaseAdmins) {
-                    $DriftData.NewAdmins += $a
-                    $DriftFound = $true
-                }
-            }
-            
-            # --- Compare Software ---
-            if ($Baseline.UnwantedSoftware.Data) {
-                $BaseSoftware = @($Baseline.UnwantedSoftware.Data.Name)
-                foreach ($s in $AuditResults.UnwantedSoftware.Data) {
-                    if ($s.Name -notin $BaseSoftware) {
-                        $DriftData.NewSoftware += $s
-                        $DriftFound = $true
-                    }
-                }
-            }
-
-            # --- Compare Hashes ---
-            # Create Dictionary for fast lookup
-            $BaseHashes = @{}
-            if ($Baseline.HashAnalysis.Data) {
-                foreach ($h in $Baseline.HashAnalysis.Data) {
-                    if ($h.Path) { $BaseHashes[$h.Path] = $h.Hash }
-                }
-            }
-
-            foreach ($curr in $AuditResults.HashAnalysis.Data) {
-                if ($BaseHashes.ContainsKey($curr.Path)) {
-                    if ($BaseHashes[$curr.Path] -ne $curr.Hash) {
-                        $DriftData.ChangedHashes += @{
-                            File = $curr.FileName
-                            Path = $curr.Path
-                            OldHash = $BaseHashes[$curr.Path]
-                            NewHash = $curr.Hash
-                        }
-                        $DriftFound = $true
-                    }
-                }
-            }
-
-            if ($DriftFound) {
-                $DriftCheck.Status = "WARN" # Use WARN to highlight difference
-                $DriftCheck.Message = "Drift Detected! Changes found compared to baseline ($($PreviousReportFile.Name))."
-                $DriftCheck.Data = $DriftData
-                Write-HostFail "  [!] DRIFT DETECTED: New Ports/Admins/Hashes found!"
-            } else {
-                $DriftCheck.Status = "PASS"
-                $DriftCheck.Message = "No drift detected. System state matches baseline."
-                Write-HostPass "  [+] System state matches baseline."
-            }
-
-        } else {
-            Write-HostInfo "  [i] No previous report found. Establishing new baseline."
-        }
-    }
-} catch {
-    $DriftCheck.Message = "Error during drift analysis: $($_.Exception.Message)"
-    Write-HostFail $DriftCheck.Message
-}
-$AuditResults.DriftAnalysis = $DriftCheck
-
-
-# ============================================================
-
-
-Write-SectionHeader "17. Browser Extension Audit"
-$ExtCheck = @{ Status = "INFO"; Message = ""; Data = @() }
-
-function Get-BrowserExtensions {
-    param($BrowserName, $Path)
-    $Results = @()
-    if (Test-Path $Path) {
-        # Get all extension IDs
-        $ExtFolders = Get-ChildItem -Path $Path -Directory -ErrorAction SilentlyContinue
-        foreach ($Folder in $ExtFolders) {
-            $Id = $Folder.Name
-            # Get Version folder (usually just one, pick last)
-            $VerFolder = Get-ChildItem -Path $Folder.FullName -Directory | Sort-Object Name -Descending | Select-Object -First 1
-            if ($VerFolder) {
-                $ManifestPath = Join-Path $VerFolder.FullName "manifest.json"
-                if (Test-Path $ManifestPath) {
-                    try {
-                        $Json = Get-Content -Path $ManifestPath -Raw -ErrorAction SilentlyContinue | ConvertFrom-Json
-                        $Name = $Json.name
-                        # Handle localized names (simple fallback)
-                        if ($Name -match "^__MSG_(.+?)__$") { $Name = "$Id (Localized)" }
-                        
-                        $Results += @{
-                            Browser = $BrowserName
-                            Name = $Name
-                            Version = $Json.version
-                            Id = $Id
-                        }
-                    } catch {}
-                }
-            }
-        }
-    }
-    return $Results
+# 1. System Checks (Sec 1, 3, 5, 9, 26)
+if (Get-Command "Invoke-LockonSystemChecks" -ErrorAction SilentlyContinue) {
+    $Res = Invoke-LockonSystemChecks -Config $Config
+    if ($Res) { foreach ($k in $Res.Keys) { $AuditResults[$k] = $Res[$k] } }
 }
 
-try {
-    $Extensions = @()
-    
-    # Chrome
-    $ChromePath = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Extensions"
-    $Extensions += Get-BrowserExtensions -BrowserName "Chrome" -Path $ChromePath
-    
-    # Edge
-    $EdgePath = "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default\Extensions"
-    $Extensions += Get-BrowserExtensions -BrowserName "Edge" -Path $EdgePath
-    
-    $ExtCheck.Message = "Found $($Extensions.Count) extensions installed."
-    $ExtCheck.Data = $Extensions
-    Write-HostPass "Successfully audited browser extensions."
-
-} catch {
-    $ExtCheck.Status = "FAIL"
-    $ExtCheck.Message = "Extension audit failed: $($_.Exception.Message)"
-    Write-HostFail $ExtCheck.Message
+# 2. Network Checks (Sec 2, 6, 7, 8, 12, 19, 20, 25, 28)
+if (Get-Command "Invoke-LockonNetworkChecks" -ErrorAction SilentlyContinue) {
+    $Res = Invoke-LockonNetworkChecks -Config $Config
+    if ($Res) { foreach ($k in $Res.Keys) { $AuditResults[$k] = $Res[$k] } }
 }
-$AuditResults.BrowserExtensions = $ExtCheck
 
-
-# ============================================================
-# --- 18. Scheduled Task Hunter (Persistence Check) ---
-# ============================================================
-Write-SectionHeader "18. Scheduled Task Hunter (Persistence Check)"
-$TaskCheck = @{ Status = "PASS"; Message = ""; Data = @() }
-
-try {
-    # Get all scheduled tasks
-    $Tasks = Get-ScheduledTask | Where-Object { $_.State -ne "Disabled" }
-    
-    $SuspiciousTasks = @()
-    
-    foreach ($T in $Tasks) {
-        $Action = $T.Actions
-        if ($Action) {
-            # Check Execute Actions
-            $ExecPath = $Action.Execute
-            if (-not $ExecPath) { $ExecPath = $Action.ToString() } # Fallback
-            
-            # Clean path for signature check
-            $CleanPath = $ExecPath.Replace('"', '').Split(' ')[0]
-            $SigStatus = Verify-Signature -Path $CleanPath
-
-            # Logic: Check for risky paths OR untrusted signature
-            # Attackers love AppData, Temp, Public, ProgramData (outside of legitimate subfolders)
-            if ($ExecPath -match "AppData" -or 
-                $ExecPath -match "Temp" -or 
-                $ExecPath -match "Users\\Public" -or
-                ($ExecPath -match "ProgramData" -and $ExecPath -notmatch "Microsoft") -or
-                $SigStatus -ne "Trusted"
-               ) {
-                
-                $SuspiciousTasks += @{
-                    Name = $T.TaskName
-                    Path = $T.TaskPath
-                    Command = $ExecPath
-                    State = $T.State
-                    Signature = $SigStatus
-                }
-                Write-HostFail "  - [SUSPICIOUS TASK] $($T.TaskName): $ExecPath [Sig: $SigStatus]"
-            }
-        }
-    }
-    
-    if ($SuspiciousTasks.Count -gt 0) {
-        $TaskCheck.Status = "FAIL"
-        $TaskCheck.Message = "Found $($SuspiciousTasks.Count) suspicious scheduled tasks running from non-standard paths."
-        $TaskCheck.Data = $SuspiciousTasks
-    } else {
-        $TaskCheck.Message = "No suspicious scheduled tasks found (scanned $($Tasks.Count) active tasks)."
-        Write-HostPass $TaskCheck.Message
-    }
-
-} catch {
-    $TaskCheck.Status = "FAIL"
-    $TaskCheck.Message = "Could not scan Scheduled Tasks: $($_.Exception.Message)"
-    Write-HostFail $TaskCheck.Message
+# 3. App & Service Checks (Sec 4, 10, 13, 14, 17, 18, 31, 32)
+if (Get-Command "Invoke-LockonAppServiceChecks" -ErrorAction SilentlyContinue) {
+    $Res = Invoke-LockonAppServiceChecks -Config $Config
+    if ($Res) { foreach ($k in $Res.Keys) { $AuditResults[$k] = $Res[$k] } }
 }
-$AuditResults.ScheduledTasks = $TaskCheck
 
-
-# ============================================================
-# --- 19. Hosts File Analysis ---
-# ============================================================
-Write-SectionHeader "19. Hosts File Analysis"
-$HostsCheck = @{ Status = "PASS"; Message = ""; Data = @() }
-
-$HostsPath = "$env:SystemRoot\System32\drivers\etc\hosts"
-try {
-    if (Test-Path $HostsPath) {
-        $Content = Get-Content $HostsPath
-        $SuspiciousEntries = @()
-        foreach ($Line in $Content) {
-            $Trimmed = $Line.Trim()
-            # Ignore comments (#) and empty lines
-            if ($Trimmed.Length -gt 0 -and $Trimmed[0] -ne '#') {
-                # Ignore standard localhost entries
-                if ($Trimmed -notmatch "127.0.0.1\s+localhost" -and $Trimmed -notmatch "::1\s+localhost") {
-                    $SuspiciousEntries += $Trimmed
-                    Write-HostWarn "  - [NOTE] Non-standard entry: $Trimmed"
-                }
-            }
-        }
-        
-        if ($SuspiciousEntries.Count -gt 0) {
-            $HostsCheck.Status = "FAIL"
-            $HostsCheck.Message = "Found $($SuspiciousEntries.Count) non-standard entries in Hosts file."
-            $HostsCheck.Data = $SuspiciousEntries
-        } else {
-            $HostsCheck.Message = "Hosts file is clean (standard localhost check)."
-            Write-HostPass $HostsCheck.Message
-        }
-    } else {
-        $HostsCheck.Message = "Hosts file not found (Unusual)."
-        Write-HostWarn $HostsCheck.Message
-    }
-} catch {
-    $HostsCheck.Status = "FAIL"
-    $HostsCheck.Message = "Could not read Hosts file: $($_.Exception.Message)"
-    Write-HostFail $HostsCheck.Message
+# 4. File Forensics Checks (Sec 15, 16, 23, 24, 30)
+if (Get-Command "Invoke-LockonFileForensicsChecks" -ErrorAction SilentlyContinue) {
+    $Res = Invoke-LockonFileForensicsChecks -Config $Config
+    if ($Res) { foreach ($k in $Res.Keys) { $AuditResults[$k] = $Res[$k] } }
 }
-$AuditResults.HostsFile = $HostsCheck
 
-# ============================================================
-# --- 20. DNS Cache Forensics ---
-# ============================================================
-Write-SectionHeader "20. DNS Cache Forensics"
-$DnsCheck = @{ Status = "INFO"; Message = ""; Data = @() }
-
-try {
-    $DnsCache = Get-DnsClientCache | Sort-Object Entry
-    $UniqueDomains = $DnsCache | Select-Object -ExpandProperty Entry -Unique
-    
-    if ($UniqueDomains) {
-        $DnsCheck.Message = "Retrieved $($UniqueDomains.Count) DNS cache entries."
-        Write-HostInfo "  - Found $($UniqueDomains.Count) entries in DNS Cache."
-        
-        # Helper to format for data
-        $CacheData = @()
-        foreach ($Domain in $UniqueDomains) {
-             $CacheData += @{ Entry = $Domain }
-        }
-        $DnsCheck.Data = $CacheData
-    } else {
-        $DnsCheck.Message = "DNS Cache is empty."
-        Write-HostInfo "  - DNS Cache is empty."
-    }
-} catch {
-    $DnsCheck.Message = "Could not retrieve DNS Cache (Requires Admin/PS5+): $($_.Exception.Message)"
-    Write-HostWarn $DnsCheck.Message
+# 5. User & Log Checks (Sec 11, 21, 22, 27, 29)
+if (Get-Command "Invoke-LockonUserLogChecks" -ErrorAction SilentlyContinue) {
+    $Res = Invoke-LockonUserLogChecks -Config $Config
+    if ($Res) { foreach ($k in $Res.Keys) { $AuditResults[$k] = $Res[$k] } }
 }
-$AuditResults.DnsCache = $DnsCheck
 
-# ============================================================
-# --- 21. Security Event Log Analysis ---
-# ============================================================
-Write-SectionHeader "21. Security Event Log Analysis (Last 24h)"
-$LogCheck = @{ Status = "PASS"; Message = ""; Data = @{ FailedLogins=@(); LogClearing=$false; NewUsers=@() } }
-
-try {
-    # 1. Failed Logins (4625)
-    $FailedEvents = Get-WinEvent -FilterHashtable @{LogName='Security'; ID=4625; StartTime=(Get-Date).AddHours(-24)} -ErrorAction SilentlyContinue
-    if ($FailedEvents) {
-        foreach ($E in $FailedEvents) {
-            $Xml = [xml]$E.ToXml()
-            $LogCheck.Data.FailedLogins += @{
-                Time = $E.TimeCreated.ToString("HH:mm:ss")
-                User = $Xml.Event.EventData.Data | Where-Object {$_.Name -eq "TargetUserName"} | Select-Object -ExpandProperty "#text"
-                Source = $Xml.Event.EventData.Data | Where-Object {$_.Name -eq "IpAddress"} | Select-Object -ExpandProperty "#text"
-            }
-        }
-    }
-
-    # 2. Log Clearing (1102)
-    $ClearEvents = Get-WinEvent -FilterHashtable @{LogName='Security'; ID=1102; StartTime=(Get-Date).AddHours(-24)} -ErrorAction SilentlyContinue
-    if ($ClearEvents) { $LogCheck.Data.LogClearing = $true }
-
-    # 3. New User Created (4720)
-    $UserEvents = Get-WinEvent -FilterHashtable @{LogName='Security'; ID=4720; StartTime=(Get-Date).AddHours(-24)} -ErrorAction SilentlyContinue
-    if ($UserEvents) {
-        foreach ($E in $UserEvents) {
-             $Xml = [xml]$E.ToXml()
-             $LogCheck.Data.NewUsers += @{
-                TargetUser = $Xml.Event.EventData.Data | Where-Object {$_.Name -eq "TargetUserName"} | Select-Object -ExpandProperty "#text"
-                Creator = $Xml.Event.EventData.Data | Where-Object {$_.Name -eq "SubjectUserName"} | Select-Object -ExpandProperty "#text"
-             }
-        }
-    }
-
-    # Evaluate Status
-    $FailCount = $LogCheck.Data.FailedLogins.Count
-    if ($LogCheck.Data.LogClearing) {
-        $LogCheck.Status = "FAIL"
-        $LogCheck.Message = "CRITICAL: Security Event Log was CLEARED in the last 24 hours!"
-        Write-HostFail $LogCheck.Message
-    } elseif ($LogCheck.Data.NewUsers.Count -gt 0) {
-        $LogCheck.Status = "WARN"
-        $LogCheck.Message = "Suspicious: New user account(s) created in the last 24 hours."
-        Write-HostWarn $LogCheck.Message
-    } elseif ($FailCount -gt 5) {
-        $LogCheck.Status = "WARN"
-        $LogCheck.Message = "Brute Force Warning: Detected $FailCount failed login attempts."
-        Write-HostWarn $LogCheck.Message
-    } else {
-        $LogCheck.Message = "No suspicious event logs found (Last 24h)."
-        Write-HostPass $LogCheck.Message
-    }
-
-} catch {
-    $LogCheck.Status = "INFO"
-    $LogCheck.Message = "Could not query Security Logs (Requires Admin): $($_.Exception.Message)"
-    Write-HostInfo $LogCheck.Message
+# 6. Drift Detection (Section 16 - Runs last to check all)
+# Now runs as a dedicated final check using full AuditResults
+if (Get-Command "Invoke-LockonDriftCheck" -ErrorAction SilentlyContinue) {
+    $Res = Invoke-LockonDriftCheck -Config $Config -RunResults $AuditResults
+    if ($Res) { foreach ($k in $Res.Keys) { $AuditResults[$k] = $Res[$k] } }
 }
-$AuditResults.EventLogs = $LogCheck
 
 # ============================================================
-Write-SectionHeader "22. Audit Complete. Generating Reports..."
+Write-SectionHeader "Audit Complete. Generating Reports..."
 
-# --- (v6.4) REVERTED HTML Report Function ---
+# REVERTED HTML Report Function
 # Reverted to the "simple list" style per user request.
 # Details are now embedded within the message cell.
 function Generate-HtmlReport($Results) {
@@ -1167,6 +252,12 @@ function Generate-HtmlReport($Results) {
         .status-fail { 
             background-color: #fee2e2; /* red-100 */ 
             color: #991b1b; /* red-800 */ 
+            font-weight: 700;
+            width: 100px;
+        }
+        .status-warn { 
+            background-color: #fef9c3; /* yellow-100 */ 
+            color: #854d0e; /* yellow-800 */ 
             font-weight: 700;
             width: 100px;
         }
@@ -1249,52 +340,84 @@ function Generate-HtmlReport($Results) {
     $HtmlBody = ""
     
     # --- 1. OS Version ---
+    if ($Results.OsInfo -and $Results.OsInfo.Message -ne "Skipped") {
     $HtmlBody += "<tr><td><strong>1. OS Version</strong></td>"
     $HtmlBody += "<td class='status-info'>INFO</td>"
     $HtmlBody += "<td>$($Results.OsInfo.Message)</td></tr>"
+    }
 
     # --- 2. Network Config ---
+    if ($Results.NetworkConfig -and $Results.NetworkConfig.Message -ne "Skipped") {
     $HtmlBody += "<tr><td><strong>2. Network Configuration</strong></td>"
     $HtmlBody += "<td class='status-$($Results.NetworkConfig.Status.ToLower())'>$($Results.NetworkConfig.Status)</td>"
-    # (v6.4) Embed details
+    # Embed details
     $Detail = $Results.NetworkConfig.Message
     if ($Results.NetworkConfig.Data) {
         $Detail += "<table class='sub-table'><tr><th>Name</th><th>MAC</th><th>IPv4</th></tr>"
         foreach ($Adapter in $Results.NetworkConfig.Data) {
-            $Detail += "<tr><td>$($Adapter.Name)</td><td>$($Adapter.MacAddress)</td><td>$($Adapter.IPv4Address)</td></tr>"
+            # Only show adapters here
+            if ($Adapter.MacAddress) {
+                $Detail += "<tr><td>$($Adapter.Name)</td><td>$($Adapter.MacAddress)</td><td>$($Adapter.IPv4Address)</td></tr>"
+            }
         }
         $Detail += "</table>"
+
+        # Show Established Connections
+        $ExternalConns = $Results.NetworkConfig.Data | Where-Object { $_.RemoteAddress }
+        if ($ExternalConns) {
+            $Detail += "<div style='color:red; font-weight:bold; margin-top:5px'>[!] ESTABLISHED EXTERNAL CONNECTIONS:</div>"
+            $Detail += "<details><summary style='cursor:pointer'>View Connections ($($ExternalConns.Count))</summary>"
+            $Detail += "<div style='max-height:300px; overflow-y:auto; border:1px solid #ddd; margin-top:5px'>"
+            $Detail += "<table class='sub-table' style='border:1px solid red'><tr><th>Remote IP</th><th>Port</th><th>Process</th></tr>"
+            foreach ($c in $ExternalConns) {
+                # Try resolve process name again if needed
+                $ProcName = (Get-Process -Id $c.OwningProcess -ErrorAction SilentlyContinue).ProcessName
+                if (-not $ProcName) { $ProcName = "PID:$($c.OwningProcess)" }
+                $Detail += "<tr><td>$($c.RemoteAddress)</td><td>$($c.RemotePort)</td><td>$ProcName</td></tr>"
+            }
+            $Detail += "</table></div></details>"
+        }
     }
     $HtmlBody += "<td>$Detail</td></tr>"
+    }
 
     # --- 3. OS Update ---
+    if ($Results.OsUpdate -and $Results.OsUpdate.Message -ne "Skipped") {
     $HtmlBody += "<tr><td><strong>3. OS Update Status</strong></td>"
     $HtmlBody += "<td class='status-$($Results.OsUpdate.Status.ToLower())'>$($Results.OsUpdate.Status)</td>"
-    # (v6.4) Embed details
+    # Embed details
     $UpdateDate = "N/A"
     if ($Results.OsUpdate.Data.LastUpdateDate) {
         try { $UpdateDate = (Get-Date $Results.OsUpdate.Data.LastUpdateDate).ToString("yyyy-MM-dd") } catch {}
     }
     $HtmlBody += "<td>$($Results.OsUpdate.Message) (Date: $UpdateDate)</td></tr>"
+    }
     
     # --- 4. Antivirus ---
+    if ($Results.Antivirus -and $Results.Antivirus.Message -ne "Skipped") {
     $HtmlBody += "<tr><td><strong>4. Antivirus (AV/EDR) Status</strong></td>"
     $HtmlBody += "<td class='status-$($Results.Antivirus.Status.ToLower())'>$($Results.Antivirus.Status)</td>"
-    # (v6.4) Embed details
+    # Embed details
     $Detail = $Results.Antivirus.Message
     if ($Results.Antivirus.Data) {
-        $Detail += "<table class='sub-table'><tr><th>Status</th><th>Product</th><th>Code</th><th>Description</th></tr>"
+        $Detail += "<table class='sub-table'><tr><th>Type</th><th>Status</th><th>Product</th><th>Description</th></tr>"
         foreach ($Av in $Results.Antivirus.Data) {
-            $Detail += "<tr><td class='status-$($Av.Status.ToLower())'>$($Av.Status)</td><td>$($Av.Name)</td><td>$($Av.State)</td><td>$($Av.Description)</td></tr>"
+            $RowStyle = ""
+            if ($Av.Type -match "EDR") { 
+                $RowStyle = "background-color:#dcfce7; color:#166534; font-weight:bold" 
+            }
+            $Detail += "<tr style='$RowStyle'><td>$($Av.Type)</td><td class='status-$($Av.Status.ToLower())'>$($Av.Status)</td><td>$($Av.Name)</td><td>$($Av.Description)</td></tr>"
         }
         $Detail += "</table>"
     }
     $HtmlBody += "<td>$Detail</td></tr>"
+    }
     
     # --- 5. Critical Patches ---
+    if ($Results.CriticalPatches -and $Results.CriticalPatches.Message -ne "Skipped") {
     $HtmlBody += "<tr><td><strong>5. Critical Patches (KB)</strong></td>"
     $HtmlBody += "<td class='status-$($Results.CriticalPatches.Status.ToLower())'>$($Results.CriticalPatches.Status)</td>"
-    # (v6.4) Embed details
+    # Embed details
     $Detail = $Results.CriticalPatches.Message
     if ($Results.CriticalPatches.Data.Found) {
         $Detail += "<br><strong>Found:</strong> $($Results.CriticalPatches.Data.Found -join ', ')"
@@ -1303,25 +426,45 @@ function Generate-HtmlReport($Results) {
          $Detail += "<br><strong>Missing (from list):</strong> $($Results.CriticalPatches.Data.Missing.Count) KBs"
     }
     $HtmlBody += "<td>$Detail</td></tr>"
+    }
 
-    # --- 6 & 7. Listening Ports ---
-    $HtmlBody += "<tr><td><strong>6 & 7. Listening Ports</strong></td>"
-    $HtmlBody += "<td class='status-$($Results.ListeningPorts.Status.ToLower())'>$($Results.ListeningPorts.Status)</td>"
-    # (v6.4) Embed details
-    $Detail = $Results.ListeningPorts.Message
-    if ($Results.ListeningPorts.Status -eq 'FAIL') {
+    # --- 6. Listening Ports (TCP) ---
+    if ($Results.ListeningPortsTCP -and $Results.ListeningPortsTCP.Message -ne "Skipped") {
+    $HtmlBody += "<tr><td><strong>6. Listening Ports (TCP)</strong></td>"
+    $HtmlBody += "<td class='status-$($Results.ListeningPortsTCP.Status.ToLower())'>$($Results.ListeningPortsTCP.Status)</td>"
+    $Detail = $Results.ListeningPortsTCP.Message
+    if ($Results.ListeningPortsTCP.Status -eq 'FAIL') {
+        $Detail += "<details><summary style='cursor:pointer'>View Risky Ports ($($Results.ListeningPortsTCP.Data.FoundRisky.Count))</summary>"
         $Detail += "<table class='sub-table'><tr><th>Port</th><th>Service</th><th>Risk</th></tr>"
-        foreach ($p in $Results.ListeningPorts.Data.FoundRisky) {
+        foreach ($p in $Results.ListeningPortsTCP.Data.FoundRisky) {
             $Detail += "<tr><td>$($p.Port)</td><td>$($p.Service)</td><td>$($p.Risk)</td></tr>"
         }
-        $Detail += "</table>"
+        $Detail += "</table></details>"
     }
     $HtmlBody += "<td>$Detail</td></tr>"
+    }
+
+    # --- 7. Listening Ports (UDP) ---
+    if ($Results.ListeningPortsUDP -and $Results.ListeningPortsUDP.Message -ne "Skipped") {
+    $HtmlBody += "<tr><td><strong>7. Listening Ports (UDP)</strong></td>"
+    $HtmlBody += "<td class='status-$($Results.ListeningPortsUDP.Status.ToLower())'>$($Results.ListeningPortsUDP.Status)</td>"
+    $Detail = $Results.ListeningPortsUDP.Message
+    if ($Results.ListeningPortsUDP.Status -eq 'FAIL') {
+        $Detail += "<details><summary style='cursor:pointer'>View Risky Ports ($($Results.ListeningPortsUDP.Data.FoundRisky.Count))</summary>"
+        $Detail += "<table class='sub-table'><tr><th>Port</th><th>Service</th><th>Risk</th></tr>"
+        foreach ($p in $Results.ListeningPortsUDP.Data.FoundRisky) {
+            $Detail += "<tr><td>$($p.Port)</td><td>$($p.Service)</td><td>$($p.Risk)</td></tr>"
+        }
+        $Detail += "</table></details>"
+    }
+    $HtmlBody += "<td>$Detail</td></tr>"
+    }
 
     # --- 8. Firewall ---
+    if ($Results.Firewall -and $Results.Firewall.Message -ne "Skipped") {
     $HtmlBody += "<tr><td><strong>8. Windows Firewall Status</strong></td>"
     $HtmlBody += "<td class='status-$($Results.Firewall.Status.ToLower())'>$($Results.Firewall.Status)</td>"
-    # (v6.4) Embed details
+    # Embed details
     $Detail = $Results.Firewall.Message
     $Detail += "<table class='sub-table'><tr><th>Profile</th><th>Status</th></tr>"
     foreach ($Profile in $Results.Firewall.Data) {
@@ -1332,29 +475,40 @@ function Generate-HtmlReport($Results) {
     }
     $Detail += "</table>"
     $HtmlBody += "<td>$Detail</td></tr>"
+    }
     
     # --- 9. UAC ---
+    if ($Results.UAC -and $Results.UAC.Message -ne "Skipped") {
     $HtmlBody += "<tr><td><strong>9. User Account Control (UAC)</strong></td>"
     $HtmlBody += "<td class='status-$($Results.UAC.Status.ToLower())'>$($Results.UAC.Status)</td>"
     $HtmlBody += "<td>$($Results.UAC.Message) (Value: $($Results.UAC.Data.EnableLUA))</td></tr>"
+    }
 
     # --- 10. Automatic Services ---
+    if ($Results.AutomaticServices -and $Results.AutomaticServices.Message -ne "Skipped") {
     $HtmlBody += "<tr><td><strong>10. Review Automatic Services</strong></td>"
     $HtmlBody += "<td class='status-$($Results.AutomaticServices.Status.ToLower())'>$($Results.AutomaticServices.Status)</td>"
-    # (v6.4) Embed details
+    # Embed details
     $Detail = $Results.AutomaticServices.Message
-    $Detail += "<br><small>Click to expand</small><details><summary>View $($Results.AutomaticServices.Data.Count) Services</summary>"
-    $Detail += "<pre>"
-    foreach ($Svc in $Results.AutomaticServices.Data) {
-        $Detail += "$($Svc.Name) `t ($($Svc.DisplayName))`n"
+    if ($Results.AutomaticServices.Status -ne "PASS") {
+        $Detail += "<br><small>Click to expand</small><details><summary>View Risk Services ($($Results.AutomaticServices.Data.Count))</summary>"
+        $Detail += "<div style='overflow-x:auto'><table class='sub-table'><tr><th>Name</th><th>Path</th><th>Reason</th><th>Signer</th></tr>"
+        foreach ($Svc in $Results.AutomaticServices.Data) {
+            $RowStyle = "background-color:#fff7ed; color:#c2410c"
+            if ($Svc.Reason -match "MASQUERADING") { $RowStyle = "background-color:#fee2e2; color:#991b1b; font-weight:bold" }
+            
+            $Detail += "<tr style='$RowStyle'><td>$($Svc.Name)</td><td>$($Svc.Path)</td><td>$($Svc.Reason)</td><td>$($Svc.Signer)</td></tr>"
+        }
+        $Detail += "</table></div></details>"
     }
-    $Detail += "</pre></details>"
     $HtmlBody += "<td>$Detail</td></tr>"
+    }
     
     # --- 11. Local Admins ---
+    if ($Results.LocalAdmins -and $Results.LocalAdmins.Message -ne "Skipped") {
     $HtmlBody += "<tr><td><strong>11. Local Administrators</strong></td>"
     $HtmlBody += "<td class='status-$($Results.LocalAdmins.Status.ToLower())'>$($Results.LocalAdmins.Status)</td>"
-    # (v6.4) Embed details
+    # Embed details
     $Detail = $Results.LocalAdmins.Message
     $Detail += "<table class='sub-table'><tr><th>Name</th><th>Type</th><th>Source</th></tr>"
     foreach ($Admin in $Results.LocalAdmins.Data) {
@@ -1362,11 +516,13 @@ function Generate-HtmlReport($Results) {
     }
     $Detail += "</table>"
     $HtmlBody += "<td>$Detail</td></tr>"
+    }
     
     # --- 12. File Shares ---
+    if ($Results.FileShares -and $Results.FileShares.Message -ne "Skipped") {
     $HtmlBody += "<tr><td><strong>12. Open File Shares</strong></td>"
     $HtmlBody += "<td class='status-$($Results.FileShares.Status.ToLower())'>$($Results.FileShares.Status)</td>"
-    # (v6.4) Embed details
+    # Embed details
     $Detail = $Results.FileShares.Message
     if ($Results.FileShares.Data) {
         $Detail += "<table class='sub-table'><tr><th>Name</th><th>Path</th><th>Access (ACL)</th></tr>"
@@ -1377,21 +533,31 @@ function Generate-HtmlReport($Results) {
         $Detail += "</table>"
     }
     $HtmlBody += "<td>$Detail</td></tr>"
+    }
     
     # --- 13. Startup Items ---
+    if ($Results.Startup -and $Results.Startup.Message -ne "Skipped") {
     $HtmlBody += "<tr><td><strong>13. Startup Items (Risky Paths)</strong></td>"
     $HtmlBody += "<td class='status-$($Results.Startup.Status.ToLower())'>$($Results.Startup.Status)</td>"
     $Detail = $Results.Startup.Message
     if ($Results.Startup.Status -eq 'FAIL') {
-        $Detail += "<table class='sub-table'><tr><th>Name</th><th>Command</th><th>User</th></tr>"
+        $Detail += "<details><summary style='cursor:pointer'>View Risky Items ($($Results.Startup.Data.Count))</summary>"
+        $Detail += "<div style='max-height:300px; overflow-y:auto; border:1px solid #ddd; margin-top:5px'>"
+        $Detail += "<table class='sub-table'><tr><th>Name</th><th>Command</th><th>Issue</th></tr>"
         foreach ($Item in $Results.Startup.Data) {
-            $Detail += "<tr><td>$($Item.Name)</td><td>$($Item.Command)</td><td>$($Item.User)</td></tr>"
+            $RowStyle = ""
+            if ($Item.Issue -match "MASQUERADING") { 
+                $RowStyle = "background-color:#fee2e2; color:#991b1b; font-weight:bold" 
+            }
+            $Detail += "<tr style='$RowStyle'><td>$($Item.Name)</td><td>$($Item.Command)</td><td>$($Item.Issue)</td></tr>"
         }
-        $Detail += "</table>"
+        $Detail += "</table></div></details>"
     }
     $HtmlBody += "<td>$Detail</td></tr>"
+    }
 
     # --- 14. Unwanted Software ---
+    if ($Results.UnwantedSoftware -and $Results.UnwantedSoftware.Message -ne "Skipped") {
     $HtmlBody += "<tr><td><strong>14. Unwanted Software (Blacklist)</strong></td>"
     $HtmlBody += "<td class='status-$($Results.UnwantedSoftware.Status.ToLower())'>$($Results.UnwantedSoftware.Status)</td>"
     $Detail = $Results.UnwantedSoftware.Message
@@ -1403,16 +569,16 @@ function Generate-HtmlReport($Results) {
         $Detail += "</table>"
     }
     $HtmlBody += "<td>$Detail</td></tr>"
+    }
 
     # End Table
 
-
     # --- 15. File Hash Analysis ---
+    if ($Results.HashAnalysis -and $Results.HashAnalysis.Message -ne "Skipped") {
     $HtmlBody += "<tr><td><strong>15. File Hash Analysis (SHA-256)</strong></td>"
     
-    $HashStatusClass = "status-info"
-    if ($Results.HashAnalysis.Status -eq "FAIL") { $HashStatusClass = "status-fail"; }
-    
+    # Dynamic Status Class
+    $HashStatusClass = "status-" + $Results.HashAnalysis.Status.ToLower()
     $HtmlBody += "<td class='$HashStatusClass'>$($Results.HashAnalysis.Status)</td>"
     
     $Detail = "$($Results.HashAnalysis.Message)<br>"
@@ -1420,7 +586,7 @@ function Generate-HtmlReport($Results) {
     # Alert for Threats
     if ($Results.HashAnalysis.Threats.Count -gt 0) {
         $Detail += "<div style='color:white; background-color:#ef4444; padding:10px; border-radius:5px; margin:5px 0; font-weight:bold;'>"
-        $Detail += "⚠️ CRITICAL THREATS DETECTED: $($Results.HashAnalysis.Threats.Count)</div>"
+        $Detail += "[!] CRITICAL THREATS DETECTED: $($Results.HashAnalysis.Threats.Count)</div>"
         $Detail += "<table class='sub-table' style='border:2px solid red'><tr><th>Threat File</th><th>Path</th><th>Malicious Hash</th></tr>"
         foreach ($t in $Results.HashAnalysis.Threats) {
              $Detail += "<tr style='background-color:#fee2e2'><td>$($t.FileName)</td><td>$($t.Path)</td><td style='font-family:monospace'>$($t.Hash)</td></tr>"
@@ -1428,18 +594,22 @@ function Generate-HtmlReport($Results) {
         $Detail += "</table><br>"
     }
 
-    $Detail += "<details><summary>View All Hashes ($($Results.HashAnalysis.Data.Count))</summary>"
-    $Detail += "<table class='sub-table'><tr><th>File Name</th><th>Path</th><th>SHA-256 Hash</th></tr>"
-    foreach ($HashItem in $Results.HashAnalysis.Data) {
-        # Truncate hash for display (first 8 chars)
-        $ShortHash = if ($HashItem.Hash.Length -gt 8) { $HashItem.Hash.Substring(0, 8) + "..." } else { $HashItem.Hash }
-        $Detail += "<tr><td>$($HashItem.FileName)</td><td style='font-size:0.75rem'>$($HashItem.Path)</td>"
-        $Detail += "<td><span class='hash-preview'>$ShortHash</span><button class='copy-btn' onclick=`"copyToClipboard('$($HashItem.Hash)')`">Copy</button></td></tr>"
+    if ($Results.HashAnalysis.Data) {
+        $Detail += "<details><summary>View All Hashes ($($Results.HashAnalysis.Data.Count))</summary>"
+        $Detail += "<table class='sub-table'><tr><th>File Name</th><th>Path</th><th>SHA-256 Hash</th></tr>"
+        foreach ($HashItem in $Results.HashAnalysis.Data) {
+            # Truncate hash for display (first 8 chars)
+            $ShortHash = if ($HashItem.Hash.Length -gt 8) { $HashItem.Hash.Substring(0, 8) + "..." } else { $HashItem.Hash }
+            $Detail += "<tr><td>$($HashItem.FileName)</td><td style='font-size:0.75rem'>$($HashItem.Path)</td>"
+            $Detail += "<td><span class='hash-preview'>$ShortHash</span><button class='copy-btn' onclick=`"copyToClipboard('$($HashItem.Hash)')`">Copy</button></td></tr>"
+        }
+        $Detail += "</table></details>"
     }
-    $Detail += "</table></details>"
     $HtmlBody += "<td>$Detail</td></tr>"
+    }
 
     # --- 16. Drift Detection ---
+    if ($Results.DriftAnalysis -and $Results.DriftAnalysis.Message -ne "Skipped") {
     $DriftStatus = "INFO"
     if ($Results.DriftAnalysis.Status -eq "WARN") { $DriftStatus = "FAIL"; } 
     elseif ($Results.DriftAnalysis.Status -eq "PASS") { $DriftStatus = "PASS"; }
@@ -1472,39 +642,56 @@ function Generate-HtmlReport($Results) {
         }
     }
     $HtmlBody += "<td>$Detail</td></tr>"
+    }
 
 
 
     # --- 17. Browser Extensions ---
+    if ($Results.BrowserExtensions -and $Results.BrowserExtensions.Message -ne "Skipped") {
     $HtmlBody += "<tr><td><strong>17. Browser Extensions</strong></td>"
     $HtmlBody += "<td class='status-info'>INFO</td>"
     $Detail = "$($Results.BrowserExtensions.Message)<br>"
     if ($Results.BrowserExtensions.Data.Count -gt 0) {
         $Detail += "<details><summary>View Extensions ($($Results.BrowserExtensions.Data.Count))</summary>"
-        $Detail += "<table class='sub-table'><tr><th>Browser</th><th>Name</th><th>Version</th><th>ID</th></tr>"
+        $Detail += "<div style='max-height:300px; overflow-y:auto; border:1px solid #ddd; margin-top:5px'>"
+        $Detail += "<table class='sub-table'><tr><th>Browser</th><th>Name</th><th>Ver</th><th>Risk</th><th>Permissions</th></tr>"
         foreach ($Ext in $Results.BrowserExtensions.Data) {
-             $Detail += "<tr><td>$($Ext.Browser)</td><td>$($Ext.Name)</td><td>$($Ext.Version)</td><td style='font-size:0.75rem; font-family:monospace'>$($Ext.Id)</td></tr>"
+             $RowStyle = ""
+             $RiskDisplay = $Ext.Risk
+             if ($Ext.Risk -eq "High") { 
+                 $RowStyle = "background-color:#fee2e2; color:#991b1b; font-weight:bold"
+                 $RiskDisplay = "[!] HIGH" 
+             } elseif ($Ext.Risk -eq "Medium") {
+                 $RowStyle = "background-color:#fff7ed; color:#c2410c"
+             }
+             $Detail += "<tr style='$RowStyle'><td>$($Ext.Browser)</td><td>$($Ext.Name)</td><td>$($Ext.Version)</td><td>$RiskDisplay</td><td style='font-size:0.8em'>$($Ext.Permissions)</td></tr>"
         }
-        $Detail += "</table></details>"
+        $Detail += "</table></div></details>"
     }
     $HtmlBody += "<td>$Detail</td></tr>"
+    }
 
     # --- 18. Scheduled Task Hunter ---
+    if ($Results.ScheduledTasks -and $Results.ScheduledTasks.Message -ne "Skipped") {
     $HtmlBody += "<tr><td><strong>18. Scheduled Task Hunter</strong></td>"
     $HtmlBody += "<td class='status-$($Results.ScheduledTasks.Status.ToLower())'>$($Results.ScheduledTasks.Status)</td>"
     
     $Detail = $Results.ScheduledTasks.Message
     if ($Results.ScheduledTasks.Status -eq 'FAIL') {
         $Detail += "<div style='color:red; font-weight:bold; margin-top:5px'>[!] SUSPICIOUS PERSISTENCE FOUND:</div>"
+        $Detail += "<details><summary style='cursor:pointer'>View Tasks ($($Results.ScheduledTasks.Data.Count))</summary>"
+        $Detail += "<div style='max-height:300px; overflow-y:auto; border:1px solid #ddd; margin-top:5px'>"
         $Detail += "<table class='sub-table'><tr><th>Task Name</th><th>Command / Action</th><th>State</th></tr>"
         foreach ($Task in $Results.ScheduledTasks.Data) {
             $Detail += "<tr><td>$($Task.Name)</td><td>$($Task.Command)</td><td>$($Task.State)</td></tr>"
         }
-        $Detail += "</table>"
+        $Detail += "</table></div></details>"
     }
     $HtmlBody += "<td>$Detail</td></tr>"
+    }
     
     # --- 19. Hosts File Analysis ---
+    if ($Results.HostsFile -and $Results.HostsFile.Message -ne "Skipped") {
     $HtmlBody += "<tr><td><strong>19. Hosts File Analysis</strong></td>"
     $HtmlBody += "<td class='status-$($Results.HostsFile.Status.ToLower())'>$($Results.HostsFile.Status)</td>"
     $Detail = $Results.HostsFile.Message
@@ -1515,8 +702,10 @@ function Generate-HtmlReport($Results) {
         $Detail += "</ul>"
     }
     $HtmlBody += "<td>$Detail</td></tr>"
+    }
 
     # --- 20. DNS Cache Forensics ---
+    if ($Results.DnsCache -and $Results.DnsCache.Message -ne "Skipped") {
     $HtmlBody += "<tr><td><strong>20. DNS Cache Forensics</strong></td>"
     $HtmlBody += "<td class='status-info'>INFO</td>"
     $Detail = "$($Results.DnsCache.Message)<br>"
@@ -1527,12 +716,14 @@ function Generate-HtmlReport($Results) {
         $Detail += "</div></details>"
     }
     $HtmlBody += "<td>$Detail</td></tr>"
+    }
     
 
 
     # --- 21. Security Event Log Analysis ---
+    if ($Results.EventLogs -and $Results.EventLogs.Message -ne "Skipped") {
     $StatusClass = "status-$($Results.EventLogs.Status.ToLower())"
-    if ($Results.EventLogs.Status -eq 'WARN') { $StatusClass = "status-fail" } # Reuse fail style for warn visibility
+    if ($Results.EventLogs.Status -eq 'WARN') { $StatusClass = "status-warn" } # (v8) Use proper Yellow Warn
 
     $HtmlBody += "<tr><td><strong>21. Security Event Log Analysis (24h)</strong></td>"
     $HtmlBody += "<td class='$StatusClass'>$($Results.EventLogs.Status)</td>"
@@ -1551,11 +742,301 @@ function Generate-HtmlReport($Results) {
             $Detail += "<div style='background:red; color:white; font-weight:bold; padding:2px; margin-top:5px'>[CRITICAL] SECURITY LOGS CLEARED!</div>"
         }
         if ($Results.EventLogs.Data.NewUsers.Count -gt 0) {
-             $Detail += "<div style='color:darkorange; font-weight:bold; margin-top:5px'>[!] NEW USERS CREATED:</div>"
-             foreach ($u in $Results.EventLogs.Data.NewUsers) { $Detail += "- $($u.TargetUser) by $($u.Creator)<br>" }
+            $Detail += "<div style='color:darkorange; font-weight:bold; margin-top:5px'>[!] NEW USERS CREATED:</div>"
+            foreach ($u in $Results.EventLogs.Data.NewUsers) { $Detail += "- $($u.TargetUser) by $($u.Creator)<br>" }
         }
+
+        # Deep Blue Details
+        if ($Results.EventLogs.Data.SuspiciousPowerShell.Count -gt 0) {
+            $Detail += "<details><summary style='color:red; font-weight:bold; margin-top:5px; cursor:pointer'>[!] SUSPICIOUS POWERSHELL COMMANDS ($($Results.EventLogs.Data.SuspiciousPowerShell.Count))</summary>"
+            $Detail += "<div style='max-height:300px; overflow-y:auto; border:1px solid #ddd; margin-top:5px'>"
+            $Detail += "<table class='sub-table' style='border:1px solid red'><tr><th>Time</th><th>Snippet</th></tr>"
+            foreach ($p in $Results.EventLogs.Data.SuspiciousPowerShell) {
+                $Detail += "<tr><td style='white-space:nowrap'>$($p.Time)</td><td style='font-family:monospace; font-size:0.75rem; word-break:break-all'>$($p.Message)</td></tr>"
+            }
+            $Detail += "</table></div></details>"
+        }
+        if ($Results.EventLogs.Data.NewServices.Count -gt 0) {
+            $Detail += "<div style='color:blue; font-weight:bold; margin-top:5px'>[i] NEW SERVICES INSTALLED:</div>"
+             foreach ($s in $Results.EventLogs.Data.NewServices) { $Detail += "- $($s.TimeCreated): $($s.Details)<br>" }
+        }
+        if ($Results.EventLogs.Data.SuspiciousProcesses.Count -gt 0) {
+            $Detail += "<details><summary style='color:red; font-weight:bold; margin-top:5px; cursor:pointer'>[!] SUSPICIOUS PROCESS LAUNCHES</summary>"
+            $Detail += "<table class='sub-table' style='border:1px solid red'><tr><th>Time</th><th>Process / Path</th></tr>"
+            foreach ($proc in $Results.EventLogs.Data.SuspiciousProcesses) {
+                 $Detail += "<tr><td>$($proc.Time)</td><td style='font-family:monospace; font-size:0.75rem'>$($proc.Message)</td></tr>"
+            }
+            $Detail += "</table></details>"
+        }
+
     }
     $HtmlBody += "<td>$Detail</td></tr>"
+    }
+
+    # --- 22. Web Browser History Spy ---
+    if ($Results.History -and $Results.History.Message -ne "Skipped") {
+    $HtmlBody += "<tr><td><strong>22. Web Browser History Spy (Forensics)</strong></td>"
+    $HtmlBody += "<td class='status-info'>INFO</td>" 
+    $Detail = "$($Results.History.Message)<br>"
+    if ($Results.History.Data.Count -gt 0) {
+         $Detail += "<div style='color:red; font-weight:bold; margin-top:5px'>[!] RECENT BROWSER HISTORY:</div>"
+         $Detail += "<details open><summary>View URLs ($($Results.History.Data.Count))</summary>"
+         $Detail += "<div style='max-height:200px; overflow-y:auto; border:1px solid #ddd; padding:5px; font-size:0.75rem'>"
+         $Detail += "<table class='sub-table'><tr><th>Browser</th><th>URL (Extracted)</th></tr>"
+         # Copy array to reverse for display
+         $RevHistory = @($Results.History.Data)
+         [array]::Reverse($RevHistory)
+         foreach ($h in $RevHistory) {
+             # Shorten URL for display
+             $DisplayUrl = if ($h.Url.Length -gt 80) { $h.Url.Substring(0, 77) + "..." } else { $h.Url }
+             $Detail += "<tr><td>$($h.Browser)</td><td style='font-family:monospace; word-break:break-all' title='$($h.Url)'>$DisplayUrl</td></tr>"
+         }
+         $Detail += "</table></div></details>"
+    }
+    $HtmlBody += "<td>$Detail</td></tr>"
+    }
+
+    # --- 23. Recent Files Activity ---
+    if ($Results.UserActivity -and $Results.UserActivity.Message -ne "Skipped") {
+    $StatusClass = "status-" + $Results.UserActivity.Status.ToLower()
+    if ($Results.UserActivity.Status -eq 'WARN') { $StatusClass = "status-warn" }
+
+    $HtmlBody += "<tr><td><strong>23. Recent Files Activity</strong></td>"
+    $HtmlBody += "<td class='$StatusClass'>$($Results.UserActivity.Status)</td>" 
+    $Detail = "$($Results.UserActivity.Message)<br>"
+    if ($Results.UserActivity.Data.Count -gt 0) {
+         $Detail += "<div style='font-weight:bold; margin-top:5px'> RECENTLY OPENED FILES (Filtered & Prioritized):</div>"
+         $Detail += "<details><summary>View Files ($($Results.UserActivity.Data.Count))</summary>"
+         $Detail += "<div style='max-height:300px; overflow-y:auto; border:1px solid #ddd; padding:5px; margin-top:5px'>"
+         $Detail += "<table class='sub-table'><tr><th>Time</th><th>Type</th><th>File Name</th><th>Path</th></tr>"
+         foreach ($f in $Results.UserActivity.Data) {
+             # Style based on ActivityType
+             $RowStyle = ""
+             $TypeDisplay = "Normal"
+             if ($f.ActivityType -eq "Suspicious") { 
+                 $RowStyle = "background-color:#fee2e2; color:#991b1b; font-weight:bold"
+                 $TypeDisplay = "⚠️ SUSPICIOUS"
+             } elseif ($f.ActivityType -eq "Document") {
+                 $RowStyle = "background-color:#eff6ff; color:#1e40af"
+                 $TypeDisplay = "📄 Document"
+             }
+             
+             # Shorten path
+             $DisplayPath = if ($f.Path.Length -gt 60) { "..." + $f.Path.Substring($f.Path.Length - 57) } else { $f.Path }
+             $TimeStr = $f.Time
+             try { $TimeStr = (Get-Date $f.Time).ToString('MM-dd HH:mm') } catch { }
+             $Detail += "<tr style='$RowStyle'><td style='white-space:nowrap'>$TimeStr</td><td>$TypeDisplay</td><td>$($f.Name)</td><td style='font-size:0.75rem' title='$($f.Path)'>$DisplayPath</td></tr>"
+         }
+         $Detail += "</table></div></details>"
+    }
+    $HtmlBody += "<td>$Detail</td></tr>"
+    }
+
+    # --- 24. Downloads Folder Analyzer ---
+    if ($Results.Downloads -and $Results.Downloads.Message -ne "Skipped") {
+    $StatusClass = "status-$($Results.Downloads.Status.ToLower())"
+    if ($Results.Downloads.Status -eq 'WARN') { $StatusClass = "status-fail" }
+
+    $HtmlBody += "<tr><td><strong>24. Downloads Folder Analysis</strong></td>"
+    $HtmlBody += "<td class='$StatusClass'>$($Results.Downloads.Status)</td>"
+    $Detail = "$($Results.Downloads.Message)<br>"
+    if ($Results.Downloads.Data.Count -gt 0) {
+        $Detail += "<div style='margin-top:5px; font-weight:bold'> Risky File Types Found:</div>"
+        $Detail += "<details><summary>View Files ($($Results.Downloads.Data.Count))</summary>"
+        $Detail += "<div style='max-height:300px; overflow-y:auto; border:1px solid #ddd; margin-top:5px'>"
+        $Detail += "<table class='sub-table'><tr><th>Time</th><th>File Name</th><th>Size</th></tr>"
+        foreach ($d in $Results.Downloads.Data) {
+            $Style = ""
+            # Highlight recent ones (<24h)
+            try {
+                if ((Get-Date $d.Time) -gt (Get-Date).AddHours(-24)) { $Style = "background-color:#fee2e2; font-weight:bold" }
+            } catch {}
+            $TimeStr = $d.Time
+            try { $TimeStr = (Get-Date $d.Time).ToString('MM-dd HH:mm') } catch { }
+            $Detail += "<tr style='$Style'><td style='white-space:nowrap'>$TimeStr</td><td>$($d.Name)</td><td>$($d.Size)</td></tr>"
+        }
+        $Detail += "</table></div></details>"
+    }
+    $HtmlBody += "<td>$Detail</td></tr>"
+    }
+
+    # --- 25. RDP Hunter ---
+    if ($Results.RdpHunter -and $Results.RdpHunter.Message -ne "Skipped") {
+    $StatusClass = "status-$($Results.RdpHunter.Status.ToLower())"
+    if ($Results.RdpHunter.Status -eq 'WARN') { $StatusClass = "status-fail" } # Red alert for external RDP
+
+    $HtmlBody += "<tr><td><strong>25. RDP Hunter (Remote Desktop)</strong></td>"
+    $HtmlBody += "<td class='$StatusClass'>$($Results.RdpHunter.Status)</td>"
+    $Detail = "$($Results.RdpHunter.Message)<br>"
+    if ($Results.RdpHunter.Data.Count -gt 0) {
+        $Detail += "<div style='margin-top:5px; font-weight:bold'> Connection History (Last 50):</div>"
+        $Detail += "<details><summary>View Logs</summary>"
+        $Detail += "<div style='max-height:300px; overflow-y:auto; border:1px solid #ddd; margin-top:5px'>"
+        $Detail += "<table class='sub-table'><tr><th>Time</th><th>Action</th><th>User</th><th>Source IP</th><th>Log Source</th></tr>"
+        foreach ($r in $Results.RdpHunter.Data) {
+            $Style = ""
+            # Highlight External IP (Robust Regex)
+             if ($r.Source -and $r.Source -notmatch "^(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|127\.|::1|fe80:|LOCAL|-)") { 
+                 $Style = "background-color:#fee2e2; font-weight:bold; color:red" 
+            }
+            $TimeStr = $r.Time
+            try { $TimeStr = (Get-Date $r.Time).ToString('MM-dd HH:mm') } catch { }
+            $Detail += "<tr style='$Style'><td style='white-space:nowrap'>$TimeStr</td><td>$($r.Action)</td><td>$($r.User)</td><td>$($r.Source)</td><td>$($r.LogSource)</td></tr>"
+        }
+        $Detail += "</table></div></details>"
+    }
+    $HtmlBody += "<td>$Detail</td></tr>"
+    }
+
+    # --- 26. Shadow Copy Check ---
+    if ($Results.ShadowCopy -and $Results.ShadowCopy.Message -ne "Skipped") {
+    $HtmlBody += "<tr><td><strong>26. Shadow Copy & Restore Points</strong></td>"
+    $HtmlBody += "<td class='status-$($Results.ShadowCopy.Status.ToLower())'>$($Results.ShadowCopy.Status)</td>"
+    $HtmlBody += "<td>$($Results.ShadowCopy.Message)</td></tr>"
+    }
+
+    # --- 27. Local Admin Hunter ---
+    if ($Results.LocalAdminsHunter -and $Results.LocalAdminsHunter.Message -ne "Skipped") {
+    $StatusClass = "status-info"
+    if ($Results.LocalAdminsHunter.Status -eq 'WARN') { $StatusClass = "status-fail" }
+    
+    $HtmlBody += "<tr><td><strong>27. Local Admin Hunter</strong></td>"
+    $HtmlBody += "<td class='$StatusClass'>$($Results.LocalAdminsHunter.Status)</td>"
+    $Detail = "$($Results.LocalAdminsHunter.Message)<br>"
+    if ($Results.LocalAdminsHunter.Data.Count -gt 0) {
+        $Detail += "<details><summary>View Recursive Groups</summary>"
+        $Detail += "<table class='sub-table'><tr><th>Group</th><th>User/Member</th><th>Class</th></tr>"
+        foreach ($u in $Results.LocalAdminsHunter.Data) { 
+             $RowStyle = ""
+             if ($u.IsSuspicious) { $RowStyle = "background-color:#fee2e2; color:#991b1b; font-weight:bold" }
+             $Detail += "<tr style='$RowStyle'><td>$($u.Group)</td><td>$($u.User)</td><td>$($u.Class)</td></tr>" 
+        }
+        $Detail += "</table></details>"
+    }
+    $HtmlBody += "<td>$Detail</td></tr>"
+    }
+
+    # --- 28. DNS Cache Analyzer ---
+    if ($Results.DnsAnalyzer -and $Results.DnsAnalyzer.Message -ne "Skipped") {
+    # Dynamic Status Class
+    $StatusClass = "status-" + $Results.DnsAnalyzer.Status.ToLower()
+    $HtmlBody += "<tr><td><strong>28. DNS Cache Analyzer</strong></td>"
+    $HtmlBody += "<td class='$StatusClass'>$($Results.DnsAnalyzer.Status)</td>"
+    $Detail = "$($Results.DnsAnalyzer.Message)<br>"
+    if ($Results.DnsAnalyzer.Data.Count -gt 0) {
+        $Detail += "<details><summary>View DNS Cache</summary>"
+        $Detail += "<table class='sub-table'><tr><th>Domain / Entry</th><th>Type</th></tr>"
+        foreach ($d in $Results.DnsAnalyzer.Data) {
+             $RowStyle = ""
+             if ($d.Type -match "Mining") { 
+                 $RowStyle = "background-color:#fee2e2; color:#991b1b; font-weight:bold" 
+             }
+             $Detail += "<tr style='$RowStyle'><td>$($d.Domain)</td><td>$($d.Type)</td></tr>" 
+
+        }
+        $Detail += "</table></details>"
+    }
+    $HtmlBody += "<td>$Detail</td></tr>"
+    }
+
+    # --- 29. UserAssist Forensics ---
+    if ($Results.UserAssist -and $Results.UserAssist.Message -ne "Skipped") {
+    # Dynamic Status Class
+    $StatusClass = "status-" + $Results.UserAssist.Status.ToLower()
+    $HtmlBody += "<tr><td><strong>29. UserAssist (Execution History)</strong></td>"
+    $HtmlBody += "<td class='$StatusClass'>$($Results.UserAssist.Status)</td>"
+    $Detail = "$($Results.UserAssist.Message)<br>"
+    if ($Results.UserAssist.Data.Count -gt 0) {
+        $Detail += "<details><summary>View Executed Programs</summary>"
+        $Detail += "<div style='max-height:300px; overflow-y:auto; border:1px solid #ddd; padding:5px; margin-top:5px'>"
+        $Detail += "<table class='sub-table'><tr><th>Last Run</th><th>Count</th><th>Program Path</th></tr>"
+        foreach ($u in $Results.UserAssist.Data) { 
+             $RowStyle = ""
+             if ($u.Path -match "mimikatz|psexec|nmap|wireshark|metasploit|cobalt") {
+                 $RowStyle = "background-color:#fee2e2; color:#991b1b; font-weight:bold"
+             }
+             
+             $TimeStr = $u.LastRun
+             try { if ($u.LastRun -is [DateTime]) { $TimeStr = $u.LastRun.ToString("yyyy-MM-dd HH:mm") } } catch {}
+             
+             $Detail += "<tr style='$RowStyle'><td style='white-space:nowrap'>$TimeStr</td><td>$($u.RunCount)</td><td style='word-break:break-all'>$($u.Path)</td></tr>"
+        }
+        $Detail += "</table></div></details>"
+    }
+    $HtmlBody += "<td>$Detail</td></tr>"
+    }
+
+    # --- 30. Recycle Bin Scavenger ---
+    if ($Results.RecycleBin -and $Results.RecycleBin.Message -ne "Skipped") {
+    $StatusClass = "status-" + $Results.RecycleBin.Status.ToLower()
+    if ($Results.RecycleBin.Status -eq 'WARN') { $StatusClass = "status-warn" }
+    
+    $HtmlBody += "<tr><td><strong>30. Recycle Bin Scavenger</strong></td>"
+    $HtmlBody += "<td class='$StatusClass'>$($Results.RecycleBin.Status)</td>"
+    $Detail = "$($Results.RecycleBin.Message)<br>"
+    if ($Results.RecycleBin.Data.Count -gt 0) {
+        # Show "Showing 20 of X" logic if truncated
+        $TotalCount = if ($Results.RecycleBin.TotalCount) { $Results.RecycleBin.TotalCount } else { $Results.RecycleBin.Data.Count }
+        $SummaryText = "View Deleted Files ($TotalCount)"
+        if ($Results.RecycleBin.Data.Count -lt $TotalCount) {
+             $SummaryText = "View Deleted Files (Showing first $($Results.RecycleBin.Data.Count) of $TotalCount)"
+        }
+    
+        $Detail += "<details><summary>$SummaryText</summary>"
+        $Detail += "<div style='max-height:300px; overflow-y:auto; border:1px solid #ddd; margin-top:5px'>"
+        $Detail += "<table class='sub-table'><tr><th>Type</th><th>File Name</th><th>Original Path</th><th>Size</th></tr>"
+        foreach ($b in $Results.RecycleBin.Data) { 
+             $RowStyle = ""
+             $TypeDisplay = "Normal"
+             if ($b.Type -eq "Suspicious") {
+                 $RowStyle = "background-color:#fee2e2; color:#991b1b; font-weight:bold"
+                 $TypeDisplay = "[!] Suspicious"
+             } elseif ($b.Type -eq "Sensitive") {
+                 $RowStyle = "background-color:#fff7ed; color:#9a3412"
+                 $TypeDisplay = "[*] Sensitive"
+             }
+             $Detail += "<tr style='$RowStyle'><td>$TypeDisplay</td><td>$($b.Name)</td><td>$($b.Path)</td><td>$($b.Size)</td></tr>" 
+        }
+        $Detail += "</table></div></details>"
+    }
+    $HtmlBody += "<td>$Detail</td></tr>"
+    }
+
+
+
+    # --- 31. Office Macro Security ---
+    if ($Results.OfficeSecurity -and $Results.OfficeSecurity.Message -ne "Skipped") {
+    $StatusClass = "status-" + $Results.OfficeSecurity.Status.ToLower()
+    $HtmlBody += "<tr><td><strong>31. Office Macro Security</strong></td>"
+    $HtmlBody += "<td class='$StatusClass'>$($Results.OfficeSecurity.Status)</td>"
+    $Detail = "$($Results.OfficeSecurity.Message)<br>"
+    if ($Results.OfficeSecurity.Data.Count -gt 0) {
+         $Detail += "<table class='sub-table' style='margin-top:5px'><tr><th>Ver</th><th>App</th><th>Setting</th></tr>"
+         foreach ($o in $Results.OfficeSecurity.Data) {
+             $Detail += "<tr><td>$($o.Version)</td><td>$($o.App)</td><td>$($o.Setting)</td></tr>"
+         }
+         $Detail += "</table>"
+    }
+    $HtmlBody += "<td>$Detail</td></tr>"
+    }
+
+    # --- 32. Software Inventory ---
+    if ($Results.SoftwareInventory -and $Results.SoftwareInventory.Message -ne "Skipped") {
+    $HtmlBody += "<tr><td><strong>32. Software Inventory</strong></td>"
+    $HtmlBody += "<td class='status-info'>INFO</td>"
+    $Detail = "$($Results.SoftwareInventory.Message)<br>"
+    if ($Results.SoftwareInventory.Data.Count -gt 0) {
+        $Detail += "<details><summary>View All Apps ($($Results.SoftwareInventory.Data.Count))</summary>"
+        # Use a scrolling div for long list
+        $Detail += "<div style='max-height:300px; overflow-y:auto; margin-top:5px; border:1px solid #ddd'>"
+        $Detail += "<table class='sub-table'><tr><th>Name</th><th>Version</th><th>Publisher</th></tr>"
+        foreach ($s in $Results.SoftwareInventory.Data) {
+             $Detail += "<tr><td>$($s.Name)</td><td>$($s.Ver)</td><td>$($s.Pub)</td></tr>"
+        }
+        $Detail += "</table></div></details>"
+    }
+    $HtmlBody += "<td>$Detail</td></tr>"
+    }
 
     $HtmlFoot = @"
         </tbody>
@@ -1573,24 +1054,24 @@ $AuditResultsObject = [PSCustomObject]$AuditResults
 
 # --- 1. Write JSON Report ---
 try {
-    # (v6.1) FIX: Remove -DateAsISO8601 (not compatible with PS 5.1)
-    # The dashboard (v1.2+) can handle the default Microsoft date format.
+    # FIX: Remove -DateAsISO8601 (not compatible with PS 5.1)
+    # The dashboard can handle the default Microsoft date format.
     $AuditResultsObject | ConvertTo-Json -Depth 5 | Out-File -FilePath $JsonReportPath -Encoding utf8
-    Write-HostPass "Successfully saved JSON report to $JsonReportPath" # (v6.3) Aligned
+    Write-HostPass "Successfully saved JSON report to $JsonReportPath" # Aligned
 } catch {
-    Write-HostFail "Could not save JSON report: $($_.Exception.Message)" # (v6.3) Aligned
+    Write-HostFail "Could not save JSON report: $($_.Exception.Message)" # Aligned
 }
 
 # --- 2. Write HTML Report ---
 try {
     $HtmlContent = Generate-HtmlReport $AuditResultsObject
     $HtmlContent | Out-File -FilePath $HtmlReportPath -Encoding utf8
-    Write-HostPass "Successfully saved HTML report to $HtmlReportPath" # (v6.3) Aligned
+    Write-HostPass "Successfully saved HTML report to $HtmlReportPath" # Aligned
 } catch {
-    Write-HostFail "Could not save HTML report: $($_.Exception.Message)" # (v6.3) Aligned
+    Write-HostFail "Could not save HTML report: $($_.Exception.Message)" # Aligned
 }
 
 # ============================================================
-Write-SectionHeader "23. All Done"
-Write-HostPass "Scan complete. Reports saved to $ReportOutputDir" # (v6.3) Aligned
+Write-SectionHeader "All Done"
+Write-HostPass "Scan complete. Reports saved to $ReportOutputDir" # Aligned
 pause

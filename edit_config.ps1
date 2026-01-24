@@ -24,6 +24,7 @@ function Show-Header {
     Write-Host "==========================================================" -ForegroundColor Cyan
     Write-Host "   LOCKON CONFIGURATION MANAGER" -ForegroundColor Cyan
     Write-Host "==========================================================" -ForegroundColor Cyan
+    Write-Host ""
     Write-Host "   [1] Open 'config.psd1' (Blacklist, Ports, AV Codes)" -ForegroundColor White
     Write-Host "       -> Edit UnwantedSoftware, RiskyPorts, AntivirusStateTranslations"
     Write-Host ""
@@ -34,6 +35,7 @@ function Show-Header {
     Write-Host "       -> Check if your edits are valid syntax"
     Write-Host ""
     Write-Host "   [4] Back to Main Menu" -ForegroundColor Gray
+    Write-Host ""
     Write-Host "==========================================================" -ForegroundColor Cyan
 }
 

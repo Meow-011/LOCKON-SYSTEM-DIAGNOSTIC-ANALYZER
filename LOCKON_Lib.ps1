@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     LOCKON Shared Library (LOCKON_Lib.ps1)
     Contains common functions for Logging and Configuration Management.
@@ -105,6 +105,141 @@ function Verify-Signature {
         }
     } catch {
         return "Error"
+    }
+}
+
+# --- Function: Get-LockonUnit (Unit Selection System) ---
+function Get-LockonUnit {
+    $UnitConfigFile = Join-Path $PSScriptRoot "config_units.json"
+    $Units = @()
+
+    # Load existing units (Force Strings)
+    if (Test-Path $UnitConfigFile) {
+        try {
+            $JsonContent = Get-Content $UnitConfigFile -Raw -Encoding UTF8
+            if ($JsonContent) {
+                $LoadedStats = $JsonContent | ConvertFrom-Json
+                # Flatten to pure strings if it's an object array, or just cast if simple array
+                if ($LoadedStats -is [Array]) {
+                    foreach ($Item in $LoadedStats) {
+                         if ($Item -is [string]) { $Units += $Item }
+                         elseif ($Item.PSObject.Properties['value']) { $Units += $Item.value.ToString() }
+                    }
+                } elseif ($LoadedStats -is [string]) {
+                    $Units += $LoadedStats
+                }
+            }
+        } catch {
+            Write-HostWarn "Could not load units config. Starting fresh."
+        }
+    }
+
+    
+    # Sort for better UX
+    $Units = $Units | Sort-Object
+
+    while ($true) {
+        Clear-Host
+        Write-Host "==============================================" -ForegroundColor Cyan
+        Write-Host "   SELECT AUDITED UNIT" -ForegroundColor Cyan
+        Write-Host "==============================================" -ForegroundColor Cyan
+        
+        $Count = $Units.Count
+        $ShowAll = $Count -le 10
+
+        if ($Count -eq 0) {
+             Write-Host "   (No units found in database)" -ForegroundColor DarkGray
+        } elseif ($ShowAll) {
+            # Low count: Show all
+            $Index = 1
+            foreach ($U in $Units) {
+                Write-Host "   [$Index] $U"
+                $Index++
+            }
+        } else {
+            # High count: Show summary
+            Write-Host "   Database contains $Count units." -ForegroundColor Gray
+            Write-Host "   (Type unit name to search)" -ForegroundColor Gray
+        }
+        
+        Write-Host "   ----------------------------------------------" -ForegroundColor DarkGray
+        Write-Host "   [N]     CREATE NEW UNIT" -ForegroundColor Yellow
+        Write-Host "   [Enter] SKIP (Unspecified)" -ForegroundColor DarkGray
+        Write-Host ""
+        
+        $InputStr = Read-Host "   Search/Select"
+        
+        # 1. Skip
+        if ([string]::IsNullOrWhiteSpace($InputStr)) {
+            return "Unspecified-Unit"
+        }
+
+        # 2. Create New Explicitly
+        if ($InputStr -eq "N" -or $InputStr -eq "n") {
+            Write-Host ""
+            $NewUnit = Read-Host "   Enter New Unit Name"
+            if (-not [string]::IsNullOrWhiteSpace($NewUnit)) {
+                $NewUnit = $NewUnit.Trim()
+                # Check duplicate
+                if ($Units -contains $NewUnit) {
+                     Write-HostWarn "Unit '$NewUnit' already exists. Selecting it."
+                     Start-Sleep -Seconds 1
+                     return $NewUnit
+                }
+                # Save to config (Ensure flat string array)
+                $Units += $NewUnit
+                $Units | Sort-Object | Select-Object -Unique | ForEach-Object { "$_" } | ConvertTo-Json -Depth 2 | Out-File $UnitConfigFile -Encoding UTF8
+                Write-HostPass "Saved '$NewUnit' to database."
+                Start-Sleep -Seconds 1
+                return $NewUnit
+            }
+            continue # Loop back
+        }
+
+        # 3. Direct ID Selection (Only if list is shown)
+        if ($ShowAll -and $InputStr -match "^\d+$" -and [int]$InputStr -le $Count -and [int]$InputStr -gt 0) {
+             return $Units[[int]$InputStr - 1]
+        }
+
+        # 4. Search Logic
+        $Matches = $Units | Where-Object { $_ -like "*$InputStr*" }
+        
+        if ($Matches.Count -eq 1) {
+            $Match = $Matches[0]
+            Write-Host "   -> Found: $Match" -ForegroundColor Green
+            Start-Sleep -Seconds 1
+            return $Match
+        }
+        elseif ($Matches.Count -gt 1) {
+            # Multiple matches
+            Write-Host ""
+            Write-Host "   [ Multiple Matches Found ]" -ForegroundColor Cyan
+            $SubIndex = 1
+            foreach ($M in $Matches) {
+                Write-Host "   [$SubIndex] $M"
+                $SubIndex++
+            }
+            Write-Host "   [0] Cancel / Search Again" -ForegroundColor Gray
+            Write-Host ""
+            
+            $SubSel = Read-Host "   Select [1-$($Matches.Count)]"
+            if ($SubSel -match "^\d+$" -and $SubSel -gt 0 -and $SubSel -le $Matches.Count) {
+                return $Matches[[int]$SubSel - 1]
+            }
+        }
+        else {
+            # No matches - Offer creation
+            Write-HostWarn "No unit found matching '$InputStr'."
+            $Create = Read-Host "   Create '$InputStr' as new unit? (Y/N)"
+            if ($Create -eq "Y" -or $Create -eq "y") {
+                $NewUnit = $InputStr.Trim()
+                $Units += $NewUnit
+                $Units | Sort-Object | Select-Object -Unique | ForEach-Object { "$_" } | ConvertTo-Json -Depth 2 | Out-File $UnitConfigFile -Encoding UTF8
+                Write-HostPass "Saved '$NewUnit' to database."
+                Start-Sleep -Seconds 1
+                return $NewUnit
+            }
+        }
     }
 }
 

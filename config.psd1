@@ -10,6 +10,7 @@
     # === 4 & 7. Risky Ports Policy ===
     # (v4.0) Upgraded to object list for detailed reporting.
     # Define risky ports with their service name and risk description.
+
     RiskyPorts = @(
         @{ 
             Port = 21
@@ -130,7 +131,7 @@
 
     # === Report Folder Policy ===
     # The main folder (in the script's root) to store all reports.
-    MainReportFolder = "AuditReports"
+
 
     # === (v5.7) Antivirus State Translations ===
     # Define the translations for AV state codes.
@@ -164,4 +165,17 @@
         "Keygen",
         "Mimikatz"
     )
+
+    # === (v8.2) System Paths (Centralized Database Locations) ===
+    # These paths are relative to the script execution folder ($PSScriptRoot).
+    # Modules should use these values via $Config.SystemPaths
+    SystemPaths = @{
+        CriticalKBs  = "critical_kbs.txt"
+        ThreatDB     = "threat_db.txt"
+        Baseline     = "config_baseline.json"
+        UnitsConfig  = "config_units.json"
+    }
+
+    # (v8.3) Main Report Folder (Relative to script root)
+    MainReportFolder = "AuditReports";
 }

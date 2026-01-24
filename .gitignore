@@ -1,9 +1,16 @@
 # User files to ignore
 *.zip
+*.log
 
 # Output directories
 AuditReports/
 Reports/
+Dashboard_Generated_*.html
+*.csv
+
+# System
+Thumbs.db
+Desktop.ini
 
 # PowerShell
 *.ps1.xml

@@ -45,7 +45,7 @@ $JsonFiles = Get-ChildItem -Path $ReportDir -Recurse -Filter "*.json"
 
 foreach ($ReportFile in $JsonFiles) {
     try {
-        $JsonString = Get-Content $ReportFile.FullName -Raw
+        $JsonString = Get-Content $ReportFile.FullName -Raw -Encoding UTF8
         $null = $JsonString | ConvertFrom-Json # Validate
         $JsonStringArray.Add($JsonString) | Out-Null
         $ReportCount++
@@ -113,8 +113,8 @@ $HtmlTemplate = @'
             <div class="flex flex-col md:flex-row justify-between items-center mb-3">
                 <h2 class="text-xs font-bold text-gray-400 uppercase tracking-wide">Filters & Search</h2>
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
-                <div class="md:col-span-1 relative">
+            <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                <div class="relative">
                     <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                         <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
                     </div>
@@ -124,6 +124,7 @@ $HtmlTemplate = @'
                 <div><select id="filterPatch" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 bg-gray-50 p-2 text-sm"><option value="All">Patches: All</option><option value="PASS">PASS Only</option><option value="FAIL">FAIL Only</option></select></div>
                 <div><select id="filterPorts" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 bg-gray-50 p-2 text-sm"><option value="All">Ports: All</option><option value="PASS">PASS Only</option><option value="FAIL">FAIL Only</option></select></div>
                 <div><select id="filterUAC" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 bg-gray-50 p-2 text-sm"><option value="All">UAC: All</option><option value="PASS">PASS Only</option><option value="FAIL">FAIL Only</option></select></div>
+                <div><select id="filterUnit" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 bg-gray-50 p-2 text-sm"><option value="All">Unit: All</option></select></div>
             </div>
         </div>
 
@@ -203,12 +204,45 @@ $HtmlTemplate = @'
         window.ALL_REPORTS = __JSON_BLOB_PLACEHOLDER__;
         window.VISIBLE_REPORTS = []; // Store currently filtered reports for export
 
-        const filters = ['filterAV', 'filterPatch', 'filterPorts', 'filterUAC'].map(id => document.getElementById(id));
+        const filters = ['filterAV', 'filterPatch', 'filterPorts', 'filterUAC', 'filterUnit'].map(id => document.getElementById(id));
         const searchInput = document.getElementById('searchInput');
-        
+        const collapsedUnits = new Set(); // Track collapsed units
+
         filters.forEach(f => f.addEventListener('change', renderTable));
         searchInput.addEventListener('keyup', renderTable);
-        window.onload = () => renderTable();
+        
+        // Populate Unit Filter
+        const uniqueUnits = [...new Set(window.ALL_REPORTS.map(r => r.ReportInfo?.Unit || 'Unspecified-Unit'))].sort();
+        const unitSelect = document.getElementById('filterUnit');
+        uniqueUnits.forEach(u => {
+            const opt = document.createElement('option');
+            opt.value = u;
+            opt.textContent = `Unit: ${u}`;
+            unitSelect.appendChild(opt);
+        });
+
+        window.onload = () => {
+             renderTable();
+             // renderUnitSummary removed
+        };
+
+        function toggleUnit(unitName) {
+            if (collapsedUnits.has(unitName)) {
+                collapsedUnits.delete(unitName);
+            } else {
+                collapsedUnits.add(unitName);
+            }
+            renderTable();
+        }
+
+        // getUnitHealth function removed
+
+        // renderUnitSummary function removed
+        
+        function exportUnitCSV(unitName) {
+            const unitReports = window.ALL_REPORTS.filter(r => (r.ReportInfo?.Unit || 'Unspecified-Unit') === unitName);
+            exportReportsToCSV(unitReports, `Security_Audit_${unitName}`);
+        }
 
         function calculateStats(reports) {
             const total = reports.length;
@@ -219,7 +253,7 @@ $HtmlTemplate = @'
             }
             let avPass = 0;
             let patchPass = 0;
-            reports.forEach(r => {
+            window.VISIBLE_REPORTS.forEach(r => {
                 if (r.Antivirus?.Status === 'PASS') avPass++;
                 if (r.CriticalPatches?.Status === 'PASS') patchPass++;
             });
@@ -242,13 +276,17 @@ $HtmlTemplate = @'
 
         // (v4.4) CSV Export Logic: Includes Network Interfaces & Enhanced Security Checks
         function exportDataToCSV() {
-            if (!window.VISIBLE_REPORTS || window.VISIBLE_REPORTS.length === 0) {
+             exportReportsToCSV(window.VISIBLE_REPORTS, 'Security_Audit_Global_Export');
+        }
+
+        function exportReportsToCSV(reports, filename) {
+            if (!reports || reports.length === 0) {
                 alert("No data to export");
                 return;
             }
 
             const headers = [
-                "Machine Name", "OS Details", "Last Update", "AV Status", "Patch Status", 
+                "Audited Unit", "Machine Name", "OS Details", "Last Update", "AV Status", "Patch Status", 
                 "Risky Ports", "Firewall", "UAC", "Risky Items", 
                 "Drift Status", "Threats Found", "Untrusted Items (Sig)", "Forensics (Hosts/DNS)", "Suspicious Events (24h)",
                 "Network Interfaces (Name: IP (MAC))"
@@ -257,6 +295,7 @@ $HtmlTemplate = @'
             csvRows.push(headers.join(","));
 
             window.VISIBLE_REPORTS.forEach(r => {
+                const unit = r.ReportInfo?.Unit || 'Unspecified-Unit';
                 const mName = r.ReportInfo?.MachineName || 'Unknown';
                 
                 // Enhanced OS Details
@@ -268,8 +307,19 @@ $HtmlTemplate = @'
                 const av = r.Antivirus?.Status || 'N/A';
                 const patch = r.CriticalPatches?.Status || 'N/A';
                 
-                let ports = r.ListeningPorts?.Status || 'N/A';
-                if (ports === 'FAIL') ports += ` (${r.ListeningPorts?.Data?.FoundRisky?.length || 0})`;
+                let ports = 'PASS';
+                if (r.ListeningPortsTCP?.Status === 'FAIL' || r.ListeningPortsUDP?.Status === 'FAIL') {
+                    ports = 'FAIL';
+                    let riskCount = 0;
+                    if (r.ListeningPortsTCP?.Data?.FoundRisky) riskCount += r.ListeningPortsTCP.Data.FoundRisky.length;
+                    if (r.ListeningPortsUDP?.Data?.FoundRisky) riskCount += r.ListeningPortsUDP.Data.FoundRisky.length;
+                    if (riskCount > 0) ports += ` (${riskCount})`;
+                } else if (r.ListeningPorts?.Status) {
+                    ports = r.ListeningPorts.Status;
+                    if (ports === 'FAIL') ports += ` (${r.ListeningPorts?.Data?.FoundRisky?.length || 0})`;
+                } else if (!r.ListeningPorts && !r.ListeningPortsTCP && !r.ListeningPortsUDP) {
+                    ports = 'N/A';
+                }
                 
                 const fw = r.Firewall?.Status || 'N/A';
                 const uac = r.UAC?.Status || 'N/A';
@@ -308,16 +358,18 @@ $HtmlTemplate = @'
                 }
 
                 // Construct Network String
+                // Construct Network String (Adapters Only)
                 let netStr = "N/A";
                 if (r.NetworkConfig?.Data && Array.isArray(r.NetworkConfig.Data)) {
-                    netStr = r.NetworkConfig.Data.map(n => {
-                        return `${n.Name}: ${n.IPv4Address} (${n.MacAddress})`;
-                    }).join("; ");
+                     netStr = r.NetworkConfig.Data
+                        .filter(n => n.MacAddress) // Filter out forensic connections
+                        .map(n => `${n.Name}: ${n.IPv4Address} (${n.MacAddress})`)
+                        .join("; ");
                 }
 
                 // Escape quotes for CSV
                 const row = [
-                    mName, os, date, av, patch, 
+                    unit, mName, os, date, av, patch, 
                     ports, fw, uac, risky, 
                     drift, threats, sigStatus, forensics, events,
                     netStr
@@ -333,33 +385,20 @@ $HtmlTemplate = @'
             const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement("a");
-            a.href = url; a.download = "Security_Audit_Export.csv"; 
+            a.href = url; a.download = filename + ".csv"; 
             document.body.appendChild(a); a.click(); document.body.removeChild(a);
         }
 
+        let currentSort = { column: 0, dir: 'asc' };
+
         function sortTable(n) {
-            const table = document.getElementById("report-table");
-            let switching = true, dir = "asc", switchcount = 0;
-            while (switching) {
-                switching = false;
-                const rows = table.rows;
-                for (var i = 1; i < (rows.length - 1); i++) {
-                    var shouldSwitch = false;
-                    const x = rows[i].getElementsByTagName("TD")[n];
-                    const y = rows[i + 1].getElementsByTagName("TD")[n];
-                    if (dir == "asc") {
-                        if (x.innerHTML.toLowerCase() > y.innerHTML.toLowerCase()) { shouldSwitch = true; break; }
-                    } else {
-                        if (x.innerHTML.toLowerCase() < y.innerHTML.toLowerCase()) { shouldSwitch = true; break; }
-                    }
-                }
-                if (shouldSwitch) {
-                    rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
-                    switching = true; switchcount++;
-                } else {
-                    if (switchcount == 0 && dir == "asc") { dir = "desc"; switching = true; }
-                }
+            if (currentSort.column === n) {
+                currentSort.dir = currentSort.dir === 'asc' ? 'desc' : 'asc';
+            } else {
+                currentSort.column = n;
+                currentSort.dir = 'asc';
             }
+            renderTable();
         }
 
         function showMachineDetails(machineName) {
@@ -367,47 +406,143 @@ $HtmlTemplate = @'
             if (!report) { alert("Details not found."); return; }
             let content = `<h3 class="text-lg font-bold mb-4 text-gray-800 border-b pb-2">Machine Details: ${machineName}</h3>`;
             
-            // Network
+            // --- 1. Network Interfaces ---
             content += '<h4 class="font-semibold text-indigo-600 mb-2 mt-4 flex items-center">Network Interfaces</h4>';
-            if (report.NetworkConfig?.Data && Array.isArray(report.NetworkConfig.Data) && report.NetworkConfig.Data.length > 0) {
-                content += '<div class="space-y-3 max-h-40 overflow-y-auto pr-2">';
-                report.NetworkConfig.Data.forEach(adapter => {
-                    content += `<div class="bg-gray-50 p-2 rounded border border-gray-200 text-sm"><div class="font-bold">${adapter.Name}</div><div class="text-xs text-gray-500">IP: ${adapter.IPv4Address} | MAC: ${adapter.MacAddress}</div></div>`;
-                });
-                content += '</div>';
-            } else { content += '<p class="text-gray-400 text-sm">No active adapters.</p>'; }
+            if (report.NetworkConfig?.Data && Array.isArray(report.NetworkConfig.Data)) {
+                // Filter for physical adapters (must have MacAddress)
+                const adapters = report.NetworkConfig.Data.filter(n => n.MacAddress);
+                
+                if (adapters.length > 0) {
+                    content += '<div class="space-y-3 max-h-40 overflow-y-auto pr-2">';
+                    adapters.forEach(adapter => {
+                        content += `<div class="bg-gray-50 p-2 rounded border border-gray-200 text-sm"><div class="font-bold">${adapter.Name}</div><div class="text-xs text-gray-500">IP: ${adapter.IPv4Address} | MAC: ${adapter.MacAddress}</div></div>`;
+                    });
+                    content += '</div>';
+                } else { 
+                    content += '<p class="text-gray-400 text-sm">No active adapters.</p>'; 
+                }
+            } else { content += '<p class="text-gray-400 text-sm">No data.</p>'; }
 
-            // Risky Items Section
+            // --- 2. Security Risks & Policy Violations ---
             content += '<h4 class="font-semibold text-red-600 mb-2 mt-4 flex items-center">Security Risks & Policy Violations</h4>';
             let foundRisks = false;
 
-            // 1. Services
-            if (report.AutomaticServices?.Status === 'FAIL') {
+            // Services
+            if (report.AutomaticServices?.Status === 'FAIL' || report.AutomaticServices?.Status === 'WARN') {
                 foundRisks = true;
-                content += '<div class="mb-2"><div class="font-bold text-sm text-red-700"> suspicious Services (Non-Standard Path):</div><ul class="list-disc pl-5 text-sm text-gray-700">';
-                report.AutomaticServices.Data.forEach(s => content += `<li><b>${s.Name}</b>: ${s.Path}</li>`);
+                content += '<div class="mb-2"><div class="font-bold text-sm text-red-700">Suspicious Services:</div><ul class="list-disc pl-5 text-sm text-gray-700">';
+                const services = Array.isArray(report.AutomaticServices.Data) ? report.AutomaticServices.Data : [report.AutomaticServices.Data];
+                services.forEach(s => content += `<li><b>${s.Name}</b>: ${s.Reason || 'Non-Standard'} (${s.Signer || 'Unsigned'})</li>`);
                 content += '</ul></div>';
             }
 
-            // 2. Startup
+            // Startup
             if (report.Startup?.Status === 'FAIL') {
                 foundRisks = true;
                 content += '<div class="mb-2"><div class="font-bold text-sm text-red-700">Suspicious Startup Items:</div><ul class="list-disc pl-5 text-sm text-gray-700">';
-                report.Startup.Data.forEach(s => content += `<li><b>${s.Name}</b>: ${s.Command}</li>`);
+                const startup = Array.isArray(report.Startup.Data) ? report.Startup.Data : [report.Startup.Data];
+                startup.forEach(s => content += `<li><b>${s.Name}</b>: ${s.Command}</li>`);
                 content += '</ul></div>';
             }
 
-            // 3. Unwanted Software
+            // Unwanted Software
             if (report.UnwantedSoftware?.Status === 'FAIL') {
                 foundRisks = true;
-                content += '<div class="mb-2"><div class="font-bold text-sm text-red-700">Unwanted Software Found:</div><ul class="list-disc pl-5 text-sm text-gray-700">';
-                report.UnwantedSoftware.Data.forEach(s => content += `<li><b>${s.Name}</b> (Policy: ${s.Policy})</li>`);
+                content += '<div class="mb-2"><div class="font-bold text-sm text-red-700">Unwanted Software:</div><ul class="list-disc pl-5 text-sm text-gray-700">';
+                const unwanted = Array.isArray(report.UnwantedSoftware.Data) ? report.UnwantedSoftware.Data : [report.UnwantedSoftware.Data];
+                unwanted.forEach(s => content += `<li><b>${s.Name}</b> (Policy: ${s.Policy})</li>`);
                 content += '</ul></div>';
             }
-
+            
             if (!foundRisks) {
-                content += '<div class="bg-green-50 text-green-700 p-3 rounded text-sm">No suspicious items or policy violations found.</div>';
+                content += '<div class="text-sm text-gray-500 italic">No basic policy violations found.</div>';
             }
+
+            // --- 3. Browser Security (Extensions) ---
+            content += '<h4 class="font-semibold text-orange-600 mb-2 mt-4 flex items-center">Browser Security</h4>';
+            if (report.BrowserExtensions?.Data && report.BrowserExtensions.Data.length > 0) {
+                 const riskyExt = report.BrowserExtensions.Data.filter(e => e.Risk === 'High' || e.Risk === 'Medium');
+                 if (riskyExt.length > 0) {
+                     content += '<div class="mb-2"><div class="font-bold text-sm text-orange-700">Risky Extensions Found:</div>';
+                     content += '<table class="min-w-full text-xs text-left mt-1 border"><thead><tr class="bg-orange-50"><th>Browser</th><th>Name</th><th>Risk</th><th>Perms</th></tr></thead><tbody>';
+                     riskyExt.forEach(e => {
+                         content += `<tr><td class="p-1 border">${e.Browser}</td><td class="p-1 border font-semibold">${e.Name}</td><td class="p-1 border text-red-600 font-bold">${e.Risk}</td><td class="p-1 border truncate max-w-xs" title="${e.Permissions}">${e.Permissions?.substring(0,30)}...</td></tr>`;
+                     });
+                     content += '</tbody></table></div>';
+                 } else {
+                     content += `<div class="text-sm text-gray-600">Found ${report.BrowserExtensions.Data.length} extensions. All appear low risk.</div>`;
+                 }
+            } else { content += '<div class="text-sm text-gray-500">No extensions found.</div>'; }
+
+            // --- 4. Admin & Remote Access (RDP) ---
+            content += '<h4 class="font-semibold text-purple-600 mb-2 mt-4 flex items-center">Admin & Remote Access</h4>';
+            // Local Admins
+            if (report.LocalAdmins?.Data) {
+                const admins = Array.isArray(report.LocalAdmins.Data) ? report.LocalAdmins.Data : [];
+                content += `<div class="text-xs mb-1"><b>Local Admins:</b> ${admins.map(a => a.Name).join(', ')}</div>`;
+            }
+            // Shadow Admins / Groups
+            if (report.LocalAdminsHunter?.Status === 'WARN') {
+                content += '<div class="font-bold text-sm text-red-600 mt-2">Suspicious Group Members (Shadow Admins):</div>';
+                const shadows = Array.isArray(report.LocalAdminsHunter.Data) ? report.LocalAdminsHunter.Data : [];
+                shadows.filter(s => s.IsSuspicious).forEach(s => {
+                    content += `<div class="text-xs text-red-700 ml-2">- [${s.Group}] <b>${s.User}</b></div>`;
+                });
+            }
+            // RDP Logs
+            if (report.RdpHunter?.Data && report.RdpHunter.Data.length > 0) {
+                const rdp = report.RdpHunter.Data;
+                const external = rdp.filter(r => r.Source && !r.Source.match(/^(192\.168|10\.|172\.(1[6-9]|2\d|3\d)|127\.|::1|fe80)/));
+                if (external.length > 0) {
+                     content += '<div class="font-bold text-sm text-red-600 mt-2">External RDP Connections Detected:</div>';
+                     content += '<ul class="list-disc pl-5 text-xs text-red-700">';
+                     external.forEach(x => content += `<li>${x.Time}: <b>${x.Source}</b> (${x.User})</li>`);
+                     content += '</ul>';
+                } else {
+                    content += `<div class="text-xs text-gray-500 mt-1">Found ${rdp.length} internal RDP connections.</div>`;
+                }
+            }
+
+            // --- 5. Network Security (DNS/Hosts) ---
+            content += '<h4 class="font-semibold text-blue-600 mb-2 mt-4 flex items-center">Network Security (DNS/Hosts)</h4>';
+            if (report.HostsFile?.Status === 'FAIL') {
+                content += '<div class="text-sm text-red-600"><b>Suspicious Hosts File Entries:</b></div>';
+                const hosts = Array.isArray(report.HostsFile.Data) ? report.HostsFile.Data : [];
+                hosts.forEach(h => content += `<div class="text-xs font-mono ml-2">${h}</div>`);
+            }
+            if (report.DnsAnalyzer?.Status === 'WARN') {
+                content += '<div class="text-sm text-red-600 mt-2"><b>Suspicious DNS Resolutions:</b></div>';
+                const dns = Array.isArray(report.DnsAnalyzer.Data) ? report.DnsAnalyzer.Data : [];
+                dns.forEach(d => content += `<div class="text-xs font-mono ml-2">${d.Domain} <span class="text-gray-500">(${d.Type})</span></div>`);
+            } else {
+                content += '<div class="text-sm text-green-600">DNS & Hosts file analysis clean.</div>';
+            }
+
+            // --- 6. Execution Forensics (UserAssist + BAM) ---
+            content += '<h4 class="font-semibold text-gray-800 mb-2 mt-4 flex items-center border-t pt-2">Execution Forensics</h4>';
+            content += '<div class="max-h-60 overflow-y-auto border border-gray-200 rounded">';
+            content += '<table class="min-w-full text-xs text-left text-gray-500">';
+            content += '<thead class="bg-gray-50 text-gray-700 uppercase font-medium"><tr><th class="px-2 py-1 sticky top-0 bg-gray-50">Src</th><th class="px-2 py-1 sticky top-0 bg-gray-50">Time/Count</th><th class="px-2 py-1 sticky top-0 bg-gray-50">Path/Details</th></tr></thead>';
+            content += '<tbody class="divide-y divide-gray-100">';
+            
+            // UsersAssist
+            if (report.UserAssist?.Data && report.UserAssist.Data.length > 0) {
+                 report.UserAssist.Data.forEach(item => {
+                     let ts = item.LastRun ? new Date(item.LastRun).toLocaleString() : 'N/A';
+                     content += `<tr class="bg-blue-50"><td class="px-2 py-1 font-bold text-blue-800">UserAssist</td><td class="px-2 py-1">${ts} (x${item.RunCount})</td><td class="px-2 py-1 break-all font-mono">${item.Path}</td></tr>`;
+                 });
+            }
+
+            // BAM/ShimCache
+            if (report.UserActivity?.Data) {
+                const activity = Array.isArray(report.UserActivity.Data) ? report.UserActivity.Data : [report.UserActivity.Data];
+                activity.forEach(item => {
+                    let timeStr = item.Time || 'N/A';
+                    if (timeStr.includes('/Date(')) { try { timeStr = new Date(parseInt(timeStr.match(/\d+/)[0])).toLocaleString(); } catch(e){} }
+                    content += `<tr><td class="px-2 py-1 font-bold">${item.Source}</td><td class="px-2 py-1">${timeStr}</td><td class="px-2 py-1 break-all font-mono">${item.Path}</td></tr>`;
+                });
+            }
+            content += '</tbody></table></div>';
 
             document.getElementById('detail-content-body').innerHTML = content;
             const modal = document.getElementById('detail-modal');
@@ -425,82 +560,203 @@ $HtmlTemplate = @'
                 Patch: document.getElementById('filterPatch').value,
                 Ports: document.getElementById('filterPorts').value,
                 UAC: document.getElementById('filterUAC').value,
+                Unit: document.getElementById('filterUnit').value,
                 Search: searchInput.value.toLowerCase()
             };
 
             if (!window.ALL_REPORTS || window.ALL_REPORTS.length === 0) {
-                tableBody.innerHTML = '<tr><td colspan="8" class="px-6 py-4 text-center text-gray-500">No reports found.</td></tr>';
+                tableBody.innerHTML = '<tr><td colspan="9" class="px-6 py-4 text-center text-gray-500">No reports found.</td></tr>';
                 calculateStats([]);
                 return;
             }
 
-            window.ALL_REPORTS.forEach(report => {
+            // 1. Filter
+            const filteredReports = window.ALL_REPORTS.filter(report => {
                 const mName = report.ReportInfo?.MachineName || 'Unknown';
                 const av = report.Antivirus?.Status || 'N/A';
                 const patch = report.CriticalPatches?.Status || 'N/A';
-                const port = report.ListeningPorts?.Status || 'N/A';
+                
+                // (v8.4) Handle Split Ports (TCP/UDP)
+                let port = 'PASS';
+                if (report.ListeningPortsTCP?.Status === 'FAIL' || report.ListeningPortsUDP?.Status === 'FAIL') {
+                    port = 'FAIL';
+                } else if (!report.ListeningPortsTCP && !report.ListeningPortsUDP) {
+                    // Fallback for old logs
+                    port = report.ListeningPorts?.Status || 'N/A';
+                }
+
                 const uac = report.UAC?.Status || 'N/A';
 
-                if (activeFilters.Search && !mName.toLowerCase().includes(activeFilters.Search)) return;
-                if (activeFilters.AV !== 'All' && av !== activeFilters.AV) return;
-                if (activeFilters.Patch !== 'All' && patch !== activeFilters.Patch) return;
-                if (activeFilters.Ports !== 'All' && port !== activeFilters.Ports) return;
-                if (activeFilters.UAC !== 'All' && uac !== activeFilters.UAC) return;
-
-                window.VISIBLE_REPORTS.push(report); // Add to visible list
-
-                const tr = document.createElement('tr');
-                tr.className = 'hover:bg-gray-50';
+                if (activeFilters.Search && !mName.toLowerCase().includes(activeFilters.Search)) return false;
+                if (activeFilters.AV !== 'All' && av !== activeFilters.AV) return false;
+                if (activeFilters.Patch !== 'All' && patch !== activeFilters.Patch) return false;
+                if (activeFilters.Ports !== 'All' && port !== activeFilters.Ports) return false;
+                if (activeFilters.UAC !== 'All' && uac !== activeFilters.UAC) return false;
+                // Unit Filter
+                const rUnit = report.ReportInfo?.Unit || 'Unspecified-Unit';
+                if (activeFilters.Unit !== 'All' && rUnit !== activeFilters.Unit) return false;
                 
-                const addCell = (text) => {
-                    const td = document.createElement('td');
-                    td.className = 'px-6 py-4 whitespace-nowrap text-sm text-gray-700';
-                    td.textContent = text || 'N/A';
-                    tr.appendChild(td);
-                };
-                const addBadge = (status, label) => {
-                    const td = document.createElement('td');
-                    td.className = 'px-6 py-4 whitespace-nowrap';
-                    const span = document.createElement('span');
-                    span.className = 'px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full status-' + (status ? status.toLowerCase() : 'info');
-                    span.textContent = label || status || 'N/A';
-                    td.appendChild(span);
-                    tr.appendChild(td);
-                };
+                return true;
+            });
+            window.VISIBLE_REPORTS = filteredReports;
 
-                const safeName = mName.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/"/g, '\\"');
-                const nameTd = document.createElement('td');
-                nameTd.className = 'px-6 py-4 whitespace-nowrap text-sm text-gray-700 font-bold';
-                nameTd.innerHTML = `<span class="clickable-name text-indigo-600 hover:text-indigo-800 cursor-pointer" onclick="showMachineDetails('${safeName}')">${mName}</span>`;
-                tr.appendChild(nameTd);
+            // 2. Sort Logic (Helper)
+            const getSortValue = (r, col) => {
+                 // Column map based on Table Headers
+                 // 0:Name, 1:OS, 2:Update, 3:AV, 4:Patch, 5:Ports, 6:FW, 7:UAC, 8:Risky
+                 switch(col) {
+                     case 0: return r.ReportInfo?.MachineName || '';
+                     case 1: return r.OsInfo?.Data?.ProductName || '';
+                     case 2: return r.OsUpdate?.Data?.LastUpdateDate || '';
+                     case 3: return r.Antivirus?.Status || '';
+                     case 4: return r.CriticalPatches?.Status || '';
+                     case 5: {
+                         // Sort by combined Port Status
+                         if (r.ListeningPortsTCP?.Status === 'FAIL' || r.ListeningPortsUDP?.Status === 'FAIL') return 'FAIL';
+                         return 'PASS';
+                     }
+                     case 6: return r.Firewall?.Status || '';
+                     case 7: return r.UAC?.Status || '';
+                     case 8: // Risky Count
+                        let c = 0;
+                        if (r.AutomaticServices?.Status === 'FAIL') c++;
+                        if (r.Startup?.Status === 'FAIL') c++;
+                        if (r.UnwantedSoftware?.Status === 'FAIL') c++;
+                        return c;
+                     default: return '';
+                 }
+            };
 
-                addCell(report.OsInfo?.Data?.DisplayVersion);
-                const d = parseDate(report.OsUpdate?.Data?.LastUpdateDate);
-                addCell(d ? d.toLocaleDateString() : 'N/A');
+            // 3. Group By Unit
+            const grouped = {};
+            filteredReports.forEach(r => {
+                const u = r.ReportInfo?.Unit || 'Unspecified-Unit';
+                if (!grouped[u]) grouped[u] = [];
+                grouped[u].push(r);
+            });
 
-                let avLabel = av;
-                if (av === 'PASS' && Array.isArray(report.Antivirus?.Data)) {
-                    const active = report.Antivirus.Data.find(a => a.Status === 'Running' || a.Status === 'PASS');
-                    if (active) avLabel = `PASS (${active.Name})`;
-                }
-                addBadge(av, avLabel);
-                addBadge(patch, patch); // Simplified Patch Status
+            // 4. Render Grouped
+            const sortedUnits = Object.keys(grouped).sort(); // Sort Unit Names Alphabetically
+
+            sortedUnits.forEach(unitName => {
+                // Sort records within group
+                grouped[unitName].sort((a,b) => {
+                    const valA = getSortValue(a, currentSort.column);
+                    const valB = getSortValue(b, currentSort.column);
+                    if (valA < valB) return currentSort.dir === 'asc' ? -1 : 1;
+                    if (valA > valB) return currentSort.dir === 'asc' ? 1 : -1;
+                    return 0;
+                });
+
+                // Unit Header
+                const isCollapsed = collapsedUnits.has(unitName);
+                const groupRow = document.createElement('tr');
                 
-                let portLabel = port;
-                if (port === 'FAIL') portLabel += ` (${report.ListeningPorts?.Data?.FoundRisky?.length || 0})`;
-                addBadge(port, portLabel);
+                groupRow.className = `bg-gray-200 cursor-pointer hover:bg-gray-300 select-none`;
+                
+                const safeUnitName = unitName.replace(/'/g, "\\'"); // escape for onclick
+                
+                groupRow.innerHTML = `<td colspan="9" class="px-6 py-2 text-left text-sm font-bold text-gray-700 uppercase tracking-wider" onclick="toggleUnit('${safeUnitName}')">
+                                        <div class="flex items-center gap-2">
+                                            <svg class="h-4 w-4 transform transition-transform ${isCollapsed ? '-rotate-90' : ''}" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+                                            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+                                            
+                                            <span>UNIT: ${unitName}</span>
+                                            
+                                            <span class="text-xs bg-gray-500 text-white px-2 rounded-full">${grouped[unitName].length} Devices</span>
+                                            
+                                            <span class="text-xs text-gray-500 ml-auto font-normal italic mr-4">${isCollapsed ? '(Click to expand)' : '(Click to collapse)'}</span>
+                                            
+                                            <!-- Export Unit Button (Stop propagation to prevent toggle) -->
+                                            <button onclick="event.stopPropagation(); exportUnitCSV('${safeUnitName}')" class="px-2 py-1 bg-white text-gray-700 border border-gray-300 rounded text-xs hover:bg-gray-50 z-10">
+                                                Export Unit
+                                            </button>
+                                        </div>
+                                      </td>`;
+                tableBody.appendChild(groupRow);
+                
+                // If collapsed, skip rendering row details
+                if (isCollapsed) return;
 
-                addBadge(report.Firewall?.Status, null);
-                addBadge(uac, null);
+                grouped[unitName].forEach(report => {
+                    const mName = report.ReportInfo?.MachineName || 'Unknown';
+                    const av = report.Antivirus?.Status || 'N/A';
+                    const patch = report.CriticalPatches?.Status || 'N/A';
+                    // Logic to determine Port Status (TCP/UDP Split or Legacy)
+                    let port = 'PASS';
+                    if (report.ListeningPortsTCP?.Status === 'FAIL' || report.ListeningPortsUDP?.Status === 'FAIL') {
+                        port = 'FAIL';
+                    } else if (!report.ListeningPortsTCP && !report.ListeningPortsUDP) {
+                        port = report.ListeningPorts?.Status || 'N/A';
+                    }
+                    const uac = report.UAC?.Status || 'N/A';
 
-                // Risky Items Aggregated Column
-                let riskyCount = 0;
-                if (report.AutomaticServices?.Status === 'FAIL') riskyCount += (report.AutomaticServices?.Data?.length || 1);
-                if (report.Startup?.Status === 'FAIL') riskyCount += (report.Startup?.Data?.length || 1);
-                if (report.UnwantedSoftware?.Status === 'FAIL') riskyCount += (report.UnwantedSoftware?.Data?.length || 1);
-                addBadge(riskyCount > 0 ? 'FAIL' : 'PASS', riskyCount > 0 ? `FAIL (${riskyCount})` : 'PASS');
+                    const tr = document.createElement('tr');
+                    tr.className = 'hover:bg-gray-50';
+                    
+                    const addCell = (text) => {
+                        const td = document.createElement('td');
+                        td.className = 'px-6 py-4 whitespace-nowrap text-sm text-gray-700';
+                        td.textContent = text || 'N/A';
+                        tr.appendChild(td);
+                    };
+                    const addBadge = (status, label) => {
+                        const td = document.createElement('td');
+                        td.className = 'px-6 py-4 whitespace-nowrap';
+                        const span = document.createElement('span');
+                        span.className = 'px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full status-' + (status ? status.toLowerCase() : 'info');
+                        span.textContent = label || status || 'N/A';
+                        td.appendChild(span);
+                        tr.appendChild(td);
+                    };
 
-                tableBody.appendChild(tr);
+                    const safeName = mName.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/"/g, '\\"');
+                    const nameTd = document.createElement('td');
+                    nameTd.className = 'px-6 py-4 whitespace-nowrap text-sm text-gray-700 font-bold';
+                    nameTd.innerHTML = `<span class="clickable-name text-indigo-600 hover:text-indigo-800 cursor-pointer" onclick="showMachineDetails('${safeName}')">${mName}</span>`;
+                    tr.appendChild(nameTd);
+
+                    addCell(report.OsInfo?.Data?.DisplayVersion);
+                    const d = parseDate(report.OsUpdate?.Data?.LastUpdateDate);
+                    addCell(d ? d.toLocaleDateString() : 'N/A');
+
+                    let avLabel = av;
+                    if (av === 'PASS' && Array.isArray(report.Antivirus?.Data)) {
+                        const active = report.Antivirus.Data.find(a => a.Status === 'Running' || a.Status === 'PASS');
+                        if (active) {
+                            if (active.Type && active.Type.includes('EDR')) {
+                                avLabel = `EDR (${active.Name})`;
+                            } else {
+                                avLabel = `PASS (${active.Name})`;
+                            }
+                        }
+                    }
+                    addBadge(av, avLabel);
+                    addBadge(patch, patch); 
+                    
+                    let portLabel = port;
+                    if (port === 'FAIL') {
+                        let count = 0;
+                        if (report.ListeningPortsTCP?.Data?.FoundRisky) count += report.ListeningPortsTCP.Data.FoundRisky.length;
+                        if (report.ListeningPortsUDP?.Data?.FoundRisky) count += report.ListeningPortsUDP.Data.FoundRisky.length;
+                        // Legacy fallback
+                        if (count === 0 && report.ListeningPorts?.Data?.FoundRisky) count += report.ListeningPorts.Data.FoundRisky.length;
+                        
+                        if (count > 0) portLabel += ` (${count})`;
+                    }
+                    addBadge(port, portLabel);
+
+                    addBadge(report.Firewall?.Status, null);
+                    addBadge(uac, null);
+
+                    let riskyCount = 0;
+                    if (report.AutomaticServices?.Status === 'FAIL') riskyCount += (report.AutomaticServices?.Data?.length || 1);
+                    if (report.Startup?.Status === 'FAIL') riskyCount += (report.Startup?.Data?.length || 1);
+                    if (report.UnwantedSoftware?.Status === 'FAIL') riskyCount += (report.UnwantedSoftware?.Data?.length || 1);
+                    addBadge(riskyCount > 0 ? 'FAIL' : 'PASS', riskyCount > 0 ? `FAIL (${riskyCount})` : 'PASS');
+
+                    tableBody.appendChild(tr);
+                });
             });
 
             calculateStats(window.VISIBLE_REPORTS);
@@ -511,9 +767,10 @@ $HtmlTemplate = @'
 '@ 
 
 Write-HostInfo "Injecting JSON data into template..."
-$FinalHtml = $HtmlTemplate -replace '__JSON_BLOB_PLACEHOLDER__', $JsonBlob
-$FinalHtml = $FinalHtml -replace '__GENERATED_DATE__', $($GeneratedDate.ToString('yyyy-MM-dd HH:mm:ss'))
-$FinalHtml = $FinalHtml -replace '__REPORT_COUNT__', $ReportCount
+# Fix: Use .Replace() string method instead of -replace (regex) to avoid issues with special chars ($) in JSON
+$FinalHtml = $HtmlTemplate.Replace('__JSON_BLOB_PLACEHOLDER__', $JsonBlob)
+$FinalHtml = $FinalHtml.Replace('__GENERATED_DATE__', $($GeneratedDate.ToString('yyyy-MM-dd HH:mm:ss')))
+$FinalHtml = $FinalHtml.Replace('__REPORT_COUNT__', "$ReportCount")
 
 $FinalHtml | Out-File -FilePath $DashboardFile -Encoding utf8
 
