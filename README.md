@@ -21,7 +21,7 @@ LOCKON: SYSTEM DIAGNOSTIC ANALYZER is engineered for **Portable "Plug-and-Play" 
     *   Load LOCKON onto a secure **USB Flash Drive**.
 *   **Step 2: Engage (Scan)**
     *   Plug into any target machine in the organization.
-    *   Run `LOCKON_PCheck.bat` immediately (No install required).
+    *   Run `LOCKON-SYSTEM_DIAGNOSTIC_ANALYZER` immediately (No install required).
 *   **Step 3: Analyze (Dashboard)**
     *   Instant HTML Dashboard generation for on-site analysis.
     *   Consolidate results from multiple units into a single view.
@@ -62,7 +62,7 @@ LOCKON: SYSTEM DIAGNOSTIC ANALYZER is engineered for **Portable "Plug-and-Play" 
     > **💡 Tip:** You can copy this entire folder to a **USB Flash Drive** to perform portable scans on offline machines.
 
 2.  **Run the Tool:**
-    *   **Double-click** `LOCKON_PCheck.bat` (Recommended - Auto-Admin check)
+    *   **Double-click** `LOCKON-SYSTEM_DIAGNOSTIC_ANALYZER` (Recommended - Auto-Admin check)
     *   **OR run via PowerShell:**
         ```powershell
         Set-ExecutionPolicy Bypass -Scope Process -Force
@@ -192,5 +192,5 @@ Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
 *Tip: You can revert this later by setting it back to `Restricted`.*
 
 **Q: "Access Denied" errors?**
-**A:** This LOCKON requires **Administrator Privileges** to access the Registry, Security Event Logs, and System Folders. Please run `LOCKON_PCheck.bat` as Admin.
+**A:** This LOCKON requires **Administrator Privileges** to access the Registry, Security Event Logs, and System Folders. Please run `LOCKON-SYSTEM_DIAGNOSTIC_ANALYZER` as Admin.
 
