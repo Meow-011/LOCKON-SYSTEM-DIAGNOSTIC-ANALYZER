@@ -835,7 +835,7 @@ function Generate-HtmlReport($Results) {
     # --- 24. Downloads Folder Analyzer ---
     if ($Results.Downloads -and $Results.Downloads.Message -ne "Skipped") {
     $StatusClass = "status-$($Results.Downloads.Status.ToLower())"
-    if ($Results.Downloads.Status -eq 'WARN') { $StatusClass = "status-fail" }
+
 
     $HtmlBody += "<tr><td><strong>24. Downloads Folder Analysis</strong></td>"
     $HtmlBody += "<td class='$StatusClass'>$($Results.Downloads.Status)</td>"
@@ -863,7 +863,7 @@ function Generate-HtmlReport($Results) {
     # --- 25. RDP Hunter ---
     if ($Results.RdpHunter -and $Results.RdpHunter.Message -ne "Skipped") {
     $StatusClass = "status-$($Results.RdpHunter.Status.ToLower())"
-    if ($Results.RdpHunter.Status -eq 'WARN') { $StatusClass = "status-fail" } # Red alert for external RDP
+
 
     $HtmlBody += "<tr><td><strong>25. RDP Hunter (Remote Desktop)</strong></td>"
     $HtmlBody += "<td class='$StatusClass'>$($Results.RdpHunter.Status)</td>"
@@ -898,7 +898,7 @@ function Generate-HtmlReport($Results) {
     # --- 27. Local Admin Hunter ---
     if ($Results.LocalAdminsHunter -and $Results.LocalAdminsHunter.Message -ne "Skipped") {
     $StatusClass = "status-info"
-    if ($Results.LocalAdminsHunter.Status -eq 'WARN') { $StatusClass = "status-fail" }
+
     
     $HtmlBody += "<tr><td><strong>27. Local Admin Hunter</strong></td>"
     $HtmlBody += "<td class='$StatusClass'>$($Results.LocalAdminsHunter.Status)</td>"
