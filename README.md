@@ -123,7 +123,7 @@ This LOCKON is highly customizable. You can adjust the security policy in `confi
 ## Detailed Audit Checklist
 
 <details>
-<summary><strong>Click to view all 33 Security Checks</strong></summary>
+<summary><strong>Click to view all 32 Security Checks</strong></summary>
 
 | ID | Check Name | Description |
 | :--- | :--- | :--- |
