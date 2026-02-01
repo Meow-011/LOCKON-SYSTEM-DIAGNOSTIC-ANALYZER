@@ -202,29 +202,33 @@ function Get-LockonUnit {
         }
 
         # 4. Search Logic
-        $Matches = $Units | Where-Object { $_ -like "*$InputStr*" }
+        $FoundUnits = $Units | Where-Object { $_ -like "*$InputStr*" }
         
-        if ($Matches.Count -eq 1) {
-            $Match = $Matches[0]
+        if ($FoundUnits.Count -eq 1) {
+            $Match = $FoundUnits[0]
             Write-Host "   -> Found: $Match" -ForegroundColor Green
             Start-Sleep -Seconds 1
             return $Match
         }
-        elseif ($Matches.Count -gt 1) {
+        elseif ($FoundUnits.Count -gt 1) {
             # Multiple matches
             Write-Host ""
             Write-Host "   [ Multiple Matches Found ]" -ForegroundColor Cyan
             $SubIndex = 1
-            foreach ($M in $Matches) {
+            foreach ($M in $FoundUnits) {
                 Write-Host "   [$SubIndex] $M"
                 $SubIndex++
             }
             Write-Host "   [0] Cancel / Search Again" -ForegroundColor Gray
             Write-Host ""
             
-            $SubSel = Read-Host "   Select [1-$($Matches.Count)]"
-            if ($SubSel -match "^\d+$" -and $SubSel -gt 0 -and $SubSel -le $Matches.Count) {
-                return $Matches[[int]$SubSel - 1]
+            $SubSel = Read-Host "   Select [1-$($FoundUnits.Count)]"
+            # Fix: Avoid implicit string comparison issues and variable collision
+            if ($SubSel -match "^\d+$") {
+                 $SubSelInt = [int]$SubSel
+                 if ($SubSelInt -gt 0 -and $SubSelInt -le $FoundUnits.Count) {
+                     return $FoundUnits[$SubSelInt - 1]
+                 }
             }
         }
         else {
