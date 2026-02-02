@@ -326,7 +326,7 @@ function Invoke-LockonNetworkChecks {
                 $SourceIP = $Xml.Event.UserData.EventXML.Address
                 
                 $RdpList += @{
-                    Time = $Ev.TimeCreated
+                    Time = $Ev.TimeCreated.ToString("yyyy-MM-dd HH:mm:ss")
                     Action = if ($Ev.Id -eq 21) { "Session Logon" } else { "Session Reconnect" }
                     User = $User
                     Source = $SourceIP
@@ -347,7 +347,7 @@ function Invoke-LockonNetworkChecks {
                 $SourceIP = $Xml.Event.EventData.Data | Where-Object {$_.Name -eq "IpAddress"} | Select-Object -ExpandProperty "#text"
 
                 $RdpList += @{
-                    Time = $Ev.TimeCreated
+                    Time = $Ev.TimeCreated.ToString("yyyy-MM-dd HH:mm:ss")
                     Action = "Network Logon"
                     User = $User
                     Source = $SourceIP

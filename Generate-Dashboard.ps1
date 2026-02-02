@@ -303,7 +303,7 @@ $HtmlTemplate = @'
                 let os = r.OsInfo?.Data?.ProductName || 'Unknown OS';
                 if (r.OsInfo?.Data?.DisplayVersion) os += ` (${r.OsInfo.Data.DisplayVersion})`;
 
-                const dObj = parseDate(r.OsUpdate?.Data?.LastUpdateDate);
+                const dObj = parseDate(r.OsUpdate?.Data?.LastInstallDate);
                 const date = dObj ? dObj.toLocaleDateString() : 'N/A';
                 const av = r.Antivirus?.Status || 'N/A';
                 const patch = r.CriticalPatches?.Status || 'N/A';
@@ -718,8 +718,8 @@ $HtmlTemplate = @'
                     tr.appendChild(nameTd);
 
                     addCell(report.OsInfo?.Data?.DisplayVersion);
-                    const d = parseDate(report.OsUpdate?.Data?.LastUpdateDate);
-                    addCell(d ? d.toLocaleDateString() : 'N/A');
+                    // Date is now pre-formatted string from PS
+                    addCell(report.OsUpdate?.Data?.LastInstallDate);
 
                     let avLabel = av;
                     if (av === 'PASS' && Array.isArray(report.Antivirus?.Data)) {

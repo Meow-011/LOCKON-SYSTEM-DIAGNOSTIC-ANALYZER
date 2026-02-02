@@ -87,8 +87,8 @@ function Invoke-LockonSystemChecks {
             }
             
             $UpdateCheck.Data = @{ 
-                LastSearchDate = $LastSearch 
-                LastInstallDate = $LastInstall
+                LastSearchDate = $DateStrSearch 
+                LastInstallDate = $DateStrInstall
             }
         } catch {
             $UpdateCheck.Status = "FAIL"

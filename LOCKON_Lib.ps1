@@ -6,7 +6,10 @@
     This script is intended to be dot-sourced by other LOCKON scripts.
 #>
 
-# --- Global Variables ---
+# --- Shared Global Configuration ---
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
+# --- Helper: Colorized Output ---
 $Global:LockonLogFile = Join-Path $PSScriptRoot "Debug.log"
 
 # --- Function: Write-Log ---
@@ -75,18 +78,10 @@ function Write-HostPass {
 }
 
 # --- Function: Write-HostFail (Moved here for reuse) ---
-function Write-HostFail {
-    param ([string]$Message)
-    Write-Host "   [FAIL] $Message" -ForegroundColor Red
-    Write-Log -Message "FAIL: $Message" -Type "WARN"
-}
+function Write-HostFail($msg) { Write-Host $msg -ForegroundColor Red }
 
 # --- Function: Write-HostWarn (Moved here for reuse) ---
-function Write-HostWarn {
-    param ([string]$Message)
-    Write-Host "   [WARN] $Message" -ForegroundColor Yellow
-    Write-Log -Message "WARN: $Message" -Type "WARN"
-}
+function Write-HostWarn($msg) { Write-Host $msg -ForegroundColor Yellow }
 
 # --- Function: Verify-Signature ---
 function Verify-Signature {
@@ -145,7 +140,9 @@ function Get-LockonUnit {
         Write-Host "==============================================" -ForegroundColor Cyan
         
         $Count = $Units.Count
-        $ShowAll = $Count -le 10
+        # Check if we were forced to show all
+        if (-not $script:ForceShowAll) { $script:ForceShowAll = $false }
+        $ShowAll = $Count -le 10 -or $script:ForceShowAll
 
         if ($Count -eq 0) {
              Write-Host "   (No units found in database)" -ForegroundColor DarkGray
@@ -164,6 +161,9 @@ function Get-LockonUnit {
         
         Write-Host "   ----------------------------------------------" -ForegroundColor DarkGray
         Write-Host "   [N]     CREATE NEW UNIT" -ForegroundColor Yellow
+        if (-not $ShowAll) {
+            Write-Host "   [L]     LIST ALL UNITS" -ForegroundColor Cyan
+        }
         Write-Host "   [Enter] SKIP (Unspecified)" -ForegroundColor DarkGray
         Write-Host ""
         
@@ -173,8 +173,15 @@ function Get-LockonUnit {
         if ([string]::IsNullOrWhiteSpace($InputStr)) {
             return "Unspecified-Unit"
         }
+        $InputStr = $InputStr.Trim()
 
-        # 2. Create New Explicitly
+        # 2. List All
+        if ($InputStr -eq "L" -or $InputStr -eq "l") {
+            $script:ForceShowAll = $true
+            continue
+        }
+
+        # 3. Create New Explicitly
         if ($InputStr -eq "N" -or $InputStr -eq "n") {
             Write-Host ""
             $NewUnit = Read-Host "   Enter New Unit Name"
@@ -207,8 +214,15 @@ function Get-LockonUnit {
         if ($FoundUnits.Count -eq 1) {
             $Match = $FoundUnits[0]
             Write-Host "   -> Found: $Match" -ForegroundColor Green
-            Start-Sleep -Seconds 1
-            return $Match
+            # Verification Step
+            $Confirm = Read-Host "   Confirm Selection? (Y/n)"
+            if ($Confirm -eq "" -or $Confirm -eq "Y" -or $Confirm -eq "y") {
+                Write-HostPass "Selected: $Match"
+                Start-Sleep -Seconds 1
+                return $Match
+            } else {
+                continue # Search again
+            }
         }
         elseif ($FoundUnits.Count -gt 1) {
             # Multiple matches
@@ -234,9 +248,9 @@ function Get-LockonUnit {
         else {
             # No matches - Offer creation
             Write-HostWarn "No unit found matching '$InputStr'."
-            $Create = Read-Host "   Create '$InputStr' as new unit? (Y/N)"
+            $Create = Read-Host "   [?] Create NEW UNIT '$InputStr'? (Y/N)"
             if ($Create -eq "Y" -or $Create -eq "y") {
-                $NewUnit = $InputStr.Trim()
+                $NewUnit = $InputStr # Already trimmed
                 $Units += $NewUnit
                 $Units | Sort-Object | Select-Object -Unique | ForEach-Object { "$_" } | ConvertTo-Json -Depth 2 | Out-File $UnitConfigFile -Encoding UTF8
                 Write-HostPass "Saved '$NewUnit' to database."

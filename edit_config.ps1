@@ -42,6 +42,7 @@ function Show-Header {
 while ($true) {
     Show-Header
     $Choice = Read-Host "   Select an option"
+    if ($Choice) { $Choice = $Choice.Trim() }
 
     switch ($Choice) {
         "1" {

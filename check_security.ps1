@@ -88,10 +88,19 @@ try {
     $HtmlReportPath = Join-Path $ReportOutputDir "$ReportFileBase.html"
     $JsonReportPath = Join-Path $ReportOutputDir "$ReportFileBase.json"
 } catch {
-    Write-HostFail "CRITICAL ERROR: Could not create report directory."
+    Write-HostFail "CRITICAL ERROR: Could not create report directory at '$ParentReportPath'."
+    Write-HostFail "Details: $($_.Exception.Message)"
     Write-Log -Message "Report Dir Creation Failed: $($_.Exception.Message)" -Type "ERROR"
-    pause
-    exit
+    # Do not exit immediately, try local fallback
+    try {
+        $ReportOutputDir = $env:TEMP
+        Write-HostWarn "Fallback: Using TEMP directory for reports: $ReportOutputDir"
+        $HtmlReportPath = Join-Path $ReportOutputDir "$ReportFileBase.html"
+        $JsonReportPath = Join-Path $ReportOutputDir "$ReportFileBase.json"
+    } catch {
+        Write-HostFail "Critical Fallback Failed. Exiting."
+        exit
+    }
 
 }
 
@@ -815,10 +824,10 @@ function Generate-HtmlReport($Results) {
              $TypeDisplay = "Normal"
              if ($f.ActivityType -eq "Suspicious") { 
                  $RowStyle = "background-color:#fee2e2; color:#991b1b; font-weight:bold"
-                 $TypeDisplay = "⚠️ SUSPICIOUS"
+                 $TypeDisplay = "[!] SUSPICIOUS"
              } elseif ($f.ActivityType -eq "Document") {
                  $RowStyle = "background-color:#eff6ff; color:#1e40af"
-                 $TypeDisplay = "📄 Document"
+                 $TypeDisplay = "[DOC] Document"
              }
              
              # Shorten path
@@ -890,7 +899,7 @@ function Generate-HtmlReport($Results) {
 
     # --- 26. Shadow Copy Check ---
     if ($Results.ShadowCopy -and $Results.ShadowCopy.Message -ne "Skipped") {
-    $HtmlBody += "<tr><td><strong>26. Shadow Copy & Restore Points</strong></td>"
+    $HtmlBody += "<tr><td><strong>26. Shadow Copy &amp; Restore Points</strong></td>"
     $HtmlBody += "<td class='status-$($Results.ShadowCopy.Status.ToLower())'>$($Results.ShadowCopy.Status)</td>"
     $HtmlBody += "<td>$($Results.ShadowCopy.Message)</td></tr>"
     }
@@ -1057,7 +1066,7 @@ try {
     # FIX: Remove -DateAsISO8601 (not compatible with PS 5.1)
     # The dashboard can handle the default Microsoft date format.
     $AuditResultsObject | ConvertTo-Json -Depth 5 | Out-File -FilePath $JsonReportPath -Encoding utf8
-    Write-HostPass "Successfully saved JSON report to $JsonReportPath" # Aligned
+    Write-HostPass "Successfully saved JSON report to $JsonReportPath"
 } catch {
     Write-HostFail "Could not save JSON report: $($_.Exception.Message)" # Aligned
 }
