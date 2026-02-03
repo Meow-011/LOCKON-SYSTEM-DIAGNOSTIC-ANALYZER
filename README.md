@@ -4,7 +4,6 @@
 ![Language](https://img.shields.io/badge/Language-PowerShell_5.1%2B-2C5BB4?style=flat-square&logo=powershell&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-4CAF50?style=flat-square)
 
-
 **LOCKON: SYSTEM DIAGNOSTIC ANALYZER** is an automated PowerShell security auditing and forensics tool designed for Windows environments. It performs deep system inspections to detect misconfigurations, potential threats, and suspicious activities using a baseline-comparison approach.
 
 ![Dashboard Preview](images/dashboard_preview.png)
@@ -30,7 +29,7 @@ LOCKON: SYSTEM DIAGNOSTIC ANALYZER is engineered for **Portable "Plug-and-Play" 
 
 ##  Key Features
 
-*   **Holistic Security Audit:** Scans 20+ system components including Firewall, UAC, Ports, and Patches.
+*   **Holistic Security Audit:** Scans 30+ system components including Firewall, UAC, Ports, and Patches.
 *   **Threat Hunting:** Integrated File Hash analysis (SHA256) against a local Threat DB and Digital Signature verification for Auto-Start items.
 *   **Drift Detection:** Automatically compares the current scan against a previous baseline to flag new open ports, new admins, or changed system files.
 *   **Forensics:**
@@ -151,7 +150,7 @@ This LOCKON is highly customizable. You can adjust the security policy in `confi
 | **22** | Web Browser History | Extracts recent history from Chrome/Edge to spot suspicious downloads/sites. |
 | **23** | Recent Files Activity | Analyzes `Recent` folder, `ShimCache`, and `BAM` to track user activity. |
 | **24** | Downloads Folder Analysis | Scans Downloads folder for risky file types (.exe, .ps1, .vbs). |
-| **25** | RDP Hunter | Analyzes Event Logs (4624 Type 10) to track incoming Remote Desktop connections. |
+| **25** | RDP Hunter | Analyzes TerminalServices & Security Logs to track Local/External RDP connections. |
 | **26** | Shadow Copy Check | Verifies if VSS Shadow Copies exist (crucial for Ransomware recovery). |
 | **27** | Local Admin Hunter (Deep) | Deep dive into "Remote Desktop Users" and "Remote Management Users" groups. |
 | **28** | DNS Analyzer (Mining/C2) | Advanced regex scan of DNS Cache for known Crypto Mining or C2 patterns. |
@@ -192,4 +191,8 @@ Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
 
 **Q: "Access Denied" errors?**
 **A:** This LOCKON requires **Administrator Privileges** to access the Registry, Security Event Logs, and System Folders. Please run `LOCKON-SYSTEM_DIAGNOSTIC_ANALYZER` as Admin.
+
+**Q: "Unexpected token" or "Invalid Character" errors on old machines?**
+**A:** If you see errors like `At line 830 char 37` or weird symbols, you might be running an **Outdated Version** on your Flash Drive.
+*   **Fix:** Copy the latest `check_security.ps1` and `LOCKON_Lib.ps1` from your project source to the USB Drive. We have replaced modern Emojis with legacy-compatible text to fix this.
 

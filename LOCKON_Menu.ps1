@@ -166,9 +166,8 @@ while ($true) {
                 [PSCustomObject]@{ID="28"; Name="DNS Analyzer (Mining/C2)"}
                 [PSCustomObject]@{ID="29"; Name="UserAssist Execution History"}
                 [PSCustomObject]@{ID="30"; Name="Recycle Bin Scavenger"}
-                [PSCustomObject]@{ID="31"; Name="Protocol Hunter"}
-                [PSCustomObject]@{ID="32"; Name="Office Security"}
-                [PSCustomObject]@{ID="33"; Name="Software Inventory"}
+                [PSCustomObject]@{ID="31"; Name="Office Security"}
+                [PSCustomObject]@{ID="32"; Name="Software Inventory"}
             )
             
             # Console Interactive Menu (Hacker Style)
